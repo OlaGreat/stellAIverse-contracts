@@ -12,6 +12,15 @@ pub struct Agent {
     pub evolution_level: u32,
     pub created_at: u64,
     pub updated_at: u64,
+    pub nonce: u64, // For replay attack prevention
+}
+
+/// Rate limiting window for security protection
+#[derive(Clone, Copy)]
+#[contracttype]
+pub struct RateLimit {
+    pub window_seconds: u64,
+    pub max_operations: u32,
 }
 
 /// Represents a marketplace listing
@@ -76,3 +85,15 @@ pub struct RoyaltyInfo {
     pub recipient: Address,
     pub percentage: u32, // 0-10000 representing 0-100%
 }
+
+/// Constants for security hardening
+pub const MAX_STRING_LENGTH: usize = 256;
+pub const MAX_CAPABILITIES: usize = 32;
+pub const MAX_ROYALTY_PERCENTAGE: u32 = 10000; // 100%
+pub const MIN_ROYALTY_PERCENTAGE: u32 = 0;
+pub const SAFE_ARITHMETIC_CHECK_OVERFLOW: u128 = u128::MAX;
+pub const PRICE_UPPER_BOUND: i128 = i128::MAX / 2; // Prevent overflow in calculations
+pub const PRICE_LOWER_BOUND: i128 = 0; // Prevent negative prices
+pub const MAX_DURATION_DAYS: u64 = 36500; // ~100 years max lease duration
+pub const MAX_AGE_SECONDS: u64 = 365 * 24 * 60 * 60; // ~1 year max data age
+
