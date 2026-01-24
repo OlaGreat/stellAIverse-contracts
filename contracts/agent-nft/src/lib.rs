@@ -138,6 +138,8 @@ impl AgentNFT {
             created_at: env.ledger().timestamp(),
             updated_at: env.ledger().timestamp(),
             nonce: 0,
+            escrow_locked: false,
+            escrow_holder: None,
         };
 
         // Store agent safely

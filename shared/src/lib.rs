@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, Address, String, Vec};
+use soroban_sdk::{contracttype, Address, String, Vec, Bytes};
 
 /// Represents an agent's metadata and state
 #[derive(Clone)]
@@ -12,7 +12,9 @@ pub struct Agent {
     pub evolution_level: u32,
     pub created_at: u64,
     pub updated_at: u64,
-    pub nonce: u64, // For replay attack prevention
+    pub nonce: u64, 
+    pub escrow_locked: bool, 
+    pub escrow_holder: Option<Address>, 
 }
 
 /// Rate limiting window for security protection
@@ -86,6 +88,20 @@ pub struct RoyaltyInfo {
     pub percentage: u32, // 0-10000 representing 0-100%
 }
 
+/// Oracle attestation for evolution completion (signed by oracle provider)
+#[derive(Clone)]
+#[contracttype]
+pub struct EvolutionAttestation {
+    pub request_id: u64,
+    pub agent_id: u64,
+    pub oracle_provider: Address,
+    pub new_model_hash: String,
+    pub attestation_data: Bytes,
+    pub signature: Bytes,
+    pub timestamp: u64,
+    pub nonce: u64,
+}
+
 /// Constants for security hardening
 pub const MAX_STRING_LENGTH: usize = 256;
 pub const MAX_CAPABILITIES: usize = 32;
@@ -96,4 +112,6 @@ pub const PRICE_UPPER_BOUND: i128 = i128::MAX / 2; // Prevent overflow in calcul
 pub const PRICE_LOWER_BOUND: i128 = 0; // Prevent negative prices
 pub const MAX_DURATION_DAYS: u64 = 36500; // ~100 years max lease duration
 pub const MAX_AGE_SECONDS: u64 = 365 * 24 * 60 * 60; // ~1 year max data age
+pub const ATTESTATION_SIGNATURE_SIZE: usize = 64; // Ed25519 signature size
+pub const MAX_ATTESTATION_DATA_SIZE: usize = 1024; // Max size for attestation data
 
