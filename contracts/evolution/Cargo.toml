@@ -3,6 +3,9 @@ name = "evolution"
 version.workspace = true
 edition.workspace = true
 
+[features]
+testutils = ["soroban-sdk/testutils"]
+
 [dependencies]
 soroban-sdk = { version = "20.5.0", features = ["alloc"] }
 shared = { path = "../../shared" }
