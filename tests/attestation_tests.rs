@@ -34,8 +34,8 @@ impl TestSetup {
         }
     }
 
-    fn create_mock_agent(&self, id: u64) -> shared::Agent {
-        let agent = shared::Agent {
+    fn create_mock_agent(&self, id: u64) -> stellai_lib::Agent {
+        let agent = stellai_lib::Agent {
             id,
             owner: self.owner.clone(),
             name: String::from_str(&self.env, "TestAgent"),
@@ -223,7 +223,7 @@ fn test_complete_upgrade_updates_agent_and_request() {
 
     // Verify agent was updated
     let agent_key = String::from_str(&setup.env, "agent_1");
-    let agent: shared::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
+    let agent: stellai_lib::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(agent.evolution_level, 1);
     assert_eq!(agent.model_hash, new_hash);
 
@@ -290,7 +290,7 @@ fn test_valid_attestation_updates_agent() {
 
     // Get initial state
     let agent_key = String::from_str(env, "agent_1");
-    let initial_agent: shared::Agent = env.storage().instance().get(&agent_key).unwrap();
+    let initial_agent: stellai_lib::Agent = env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(initial_agent.evolution_level, 0);
     assert_eq!(initial_agent.model_hash, String::from_str(env, "original_hash"));
 
@@ -299,7 +299,7 @@ fn test_valid_attestation_updates_agent() {
     Evolution::apply_attestation(env.clone(), attestation.clone());
 
     // Verify agent was updated
-    let updated_agent: shared::Agent = env.storage().instance().get(&agent_key).unwrap();
+    let updated_agent: stellai_lib::Agent = env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(updated_agent.evolution_level, 1);
     assert_eq!(updated_agent.model_hash, String::from_str(env, "upgraded_hash_v1"));
     assert_eq!(updated_agent.nonce, 1);
@@ -340,7 +340,7 @@ fn test_replay_protection_prevents_reuse() {
     Evolution::apply_attestation(env.clone(), attestation1);
 
     let agent_key = String::from_str(env, "agent_1");
-    let agent_after_first: shared::Agent = env.storage().instance().get(&agent_key).unwrap();
+    let agent_after_first: stellai_lib::Agent = env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(agent_after_first.evolution_level, 1);
 
     // Reset request for second attempt
@@ -359,7 +359,7 @@ fn test_replay_protection_prevents_reuse() {
     assert!(result.is_err()); // Should panic due to replay protection
 
     // Verify agent wasn't updated again
-    let agent_after_replay: shared::Agent = env.storage().instance().get(&agent_key).unwrap();
+    let agent_after_replay: stellai_lib::Agent = env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(agent_after_replay.evolution_level, 1); // Still 1, not 2
 }
 
@@ -376,7 +376,7 @@ fn test_replay_protection_with_higher_nonce_allowed() {
     Evolution::apply_attestation(env.clone(), attestation1);
 
     let agent_key = String::from_str(env, "agent_1");
-    let agent_after_first: shared::Agent = env.storage().instance().get(&agent_key).unwrap();
+    let agent_after_first: stellai_lib::Agent = env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(agent_after_first.evolution_level, 1);
 
     // Reset request for second attestation
@@ -390,7 +390,7 @@ fn test_replay_protection_with_higher_nonce_allowed() {
     let attestation2 = setup.create_attestation(1, 1, 2);
     Evolution::apply_attestation(env.clone(), attestation2);
 
-    let agent_after_second: shared::Agent = env.storage().instance().get(&agent_key).unwrap();
+    let agent_after_second: stellai_lib::Agent = env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(agent_after_second.evolution_level, 2);
 }
 
@@ -502,7 +502,7 @@ fn test_multiple_attestations_sequential() {
     Evolution::apply_attestation(env.clone(), att1);
 
     let agent_key = String::from_str(env, "agent_1");
-    let agent1: shared::Agent = env.storage().instance().get(&agent_key).unwrap();
+    let agent1: stellai_lib::Agent = env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(agent1.evolution_level, 1);
 
     // Reset for second evolution
@@ -517,7 +517,7 @@ fn test_multiple_attestations_sequential() {
     att2.new_model_hash = String::from_str(env, "upgraded_hash_v2");
     Evolution::apply_attestation(env.clone(), att2);
 
-    let agent2: shared::Agent = env.storage().instance().get(&agent_key).unwrap();
+    let agent2: stellai_lib::Agent = env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(agent2.evolution_level, 2);
     assert_eq!(agent2.model_hash, String::from_str(env, "upgraded_hash_v2"));
 }
@@ -692,7 +692,7 @@ fn test_attestation_with_max_model_hash_length_succeeds() {
     Evolution::apply_attestation(setup.env.clone(), attestation);
 
     let agent_key = String::from_str(&setup.env, "agent_1");
-    let agent: shared::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
+    let agent: stellai_lib::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(agent.evolution_level, 1);
 }
 
@@ -719,13 +719,13 @@ fn test_evolution_increments_agent_nonce() {
     setup.create_evolution_request(1, 1);
 
     let agent_key = String::from_str(&setup.env, "agent_1");
-    let initial_agent: shared::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
+    let initial_agent: stellai_lib::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(initial_agent.nonce, 0);
 
     let attestation = setup.create_attestation(1, 1, 1);
     Evolution::apply_attestation(setup.env.clone(), attestation);
 
-    let updated_agent: shared::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
+    let updated_agent: stellai_lib::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(updated_agent.nonce, 1);
 }
 
@@ -736,12 +736,12 @@ fn test_complete_upgrade_increments_agent_nonce() {
     setup.create_evolution_request(1, 1);
 
     let agent_key = String::from_str(&setup.env, "agent_1");
-    let initial_agent: shared::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
+    let initial_agent: stellai_lib::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(initial_agent.nonce, 0);
 
     let new_hash = String::from_str(&setup.env, "upgraded_hash");
     Evolution::complete_upgrade(setup.env.clone(), setup.admin.clone(), 1, new_hash);
 
-    let updated_agent: shared::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
+    let updated_agent: stellai_lib::Agent = setup.env.storage().instance().get(&agent_key).unwrap();
     assert_eq!(updated_agent.nonce, 1);
 }
