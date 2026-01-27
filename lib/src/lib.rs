@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{contracttype, Address, String, Bytes, Symbol};
+use soroban_sdk::{contracttype, Address, Bytes, String, Symbol};
 
 #[derive(Clone, Debug)]
 #[contracttype]
@@ -12,7 +12,6 @@ pub struct OracleData {
     pub signature: Option<String>,
     pub source: Option<String>,
 }
-
 
 #[derive(Clone)]
 #[contracttype]

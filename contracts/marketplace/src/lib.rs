@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
-use stellai_lib::{Listing, RoyaltyInfo, ListingType};
+use stellai_lib::{Listing, ListingType, RoyaltyInfo};
 
 const ADMIN_KEY: &str = "admin";
 const LISTING_COUNTER_KEY: &str = "listing_counter";
@@ -13,14 +13,21 @@ pub struct Marketplace;
 impl Marketplace {
     /// Initialize contract with admin
     pub fn init_contract(env: Env, admin: Address) {
-        let admin_data = env.storage().instance().get::<_, Address>(&Symbol::new(&env, ADMIN_KEY));
+        let admin_data = env
+            .storage()
+            .instance()
+            .get::<_, Address>(&Symbol::new(&env, ADMIN_KEY));
         if admin_data.is_some() {
             panic!("Contract already initialized");
         }
 
         admin.require_auth();
-        env.storage().instance().set(&Symbol::new(&env, ADMIN_KEY), &admin);
-        env.storage().instance().set(&Symbol::new(&env, LISTING_COUNTER_KEY), &0u64);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, ADMIN_KEY), &admin);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, LISTING_COUNTER_KEY), &0u64);
     }
 
     /// Create a new listing
@@ -44,7 +51,8 @@ impl Marketplace {
         }
 
         // Generate listing ID
-        let counter: u64 = env.storage()
+        let counter: u64 = env
+            .storage()
             .instance()
             .get(&Symbol::new(&env, LISTING_COUNTER_KEY))
             .unwrap_or(0);
@@ -76,7 +84,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "listing_created"),),
-            (listing_id, agent_id, seller, price)
+            (listing_id, agent_id, seller, price),
         );
 
         listing_id
@@ -91,7 +99,8 @@ impl Marketplace {
         }
 
         let listing_key = (Symbol::new(&env, "listing"), listing_id);
-        let mut listing: Listing = env.storage()
+        let mut listing: Listing = env
+            .storage()
             .instance()
             .get(&listing_key)
             .expect("Listing not found");
@@ -106,7 +115,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "agent_sold"),),
-            (listing_id, listing.agent_id, buyer)
+            (listing_id, listing.agent_id, buyer),
         );
     }
 
@@ -119,7 +128,8 @@ impl Marketplace {
         }
 
         let listing_key = (Symbol::new(&env, "listing"), listing_id);
-        let mut listing: Listing = env.storage()
+        let mut listing: Listing = env
+            .storage()
             .instance()
             .get(&listing_key)
             .expect("Listing not found");
@@ -133,7 +143,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "listing_cancelled"),),
-            (listing_id, listing.agent_id, seller)
+            (listing_id, listing.agent_id, seller),
         );
     }
 
@@ -154,22 +164,18 @@ impl Marketplace {
         if agent_id == 0 {
             panic!("Invalid agent ID");
         }
-        if fee > 10000 { // 100% in basis points
+        if fee > 10000 {
+            // 100% in basis points
             panic!("Royalty fee exceeds maximum (100%)");
         }
 
-        let royalty_info = RoyaltyInfo {
-            recipient,
-            fee,
-        };
+        let royalty_info = RoyaltyInfo { recipient, fee };
 
         let royalty_key = (Symbol::new(&env, "royalty"), agent_id);
         env.storage().instance().set(&royalty_key, &royalty_info);
 
-        env.events().publish(
-            (Symbol::new(&env, "royalty_set"),),
-            (agent_id, fee)
-        );
+        env.events()
+            .publish((Symbol::new(&env, "royalty_set"),), (agent_id, fee));
     }
 
     /// Get royalty info for an agent
