@@ -1,13 +1,10 @@
-
 #![no_std]
-extern crate alloc;
-use alloc::format;
-use soroban_sdk::{contract, contractimpl, contracterror, contracttype, Symbol, Address, String, Env, Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, contracttype, Address, Env, String, Symbol, Vec,
+};
 
 const ADMIN_KEY: &str = "admin";
 const AGENT_COUNTER_KEY: &str = "agent_counter";
-const AGENT_KEY_PREFIX: &str = "agent_";
-const AGENT_LEASE_STATUS_PREFIX: &str = "agent_lease_";
 const APPROVED_MINTERS_KEY: &str = "approved_minters";
 
 // Maximum lengths for validation
@@ -49,6 +46,8 @@ pub struct Agent {
     pub created_at: u64,
     pub updated_at: u64,
     pub nonce: u64,
+    pub escrow_locked: bool,
+    pub escrow_holder: Option<Address>,
 }
 
 // ============================================================================
@@ -72,51 +71,68 @@ impl AgentNFT {
     /// Initialize contract with admin (one-time setup)
     pub fn init_contract(env: Env, admin: Address) -> Result<(), ContractError> {
         // Security: Verify this is first initialization
-        let admin_data = env.storage().instance().get::<_, Address>(&Symbol::new(&env, ADMIN_KEY));
+        let admin_data = env
+            .storage()
+            .instance()
+            .get::<_, Address>(&Symbol::new(&env, ADMIN_KEY));
         if admin_data.is_some() {
             return Err(ContractError::AlreadyInitialized);
         }
 
         admin.require_auth();
-        env.storage().instance().set(&Symbol::new(&env, ADMIN_KEY), &admin);
-        env.storage().instance().set(&Symbol::new(&env, AGENT_COUNTER_KEY), &0u64);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, ADMIN_KEY), &admin);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, AGENT_COUNTER_KEY), &0u64);
 
         // Initialize approved minters list (empty by default)
         let approved_minters: Vec<Address> = Vec::new(&env);
-        env.storage().instance().set(&Symbol::new(&env, APPROVED_MINTERS_KEY), &approved_minters);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, APPROVED_MINTERS_KEY), &approved_minters);
 
         Ok(())
     }
 
     /// Add an approved minter (admin only)
-    pub fn add_approved_minter(env: Env, admin: Address, minter: Address) -> Result<(), ContractError> {
+    pub fn add_approved_minter(
+        env: Env,
+        admin: Address,
+        minter: Address,
+    ) -> Result<(), ContractError> {
         admin.require_auth();
         Self::verify_admin(&env, &admin)?;
 
-        let mut approved_minters: Vec<Address> = env.storage()
+        let mut approved_minters: Vec<Address> = env
+            .storage()
             .instance()
             .get(&Symbol::new(&env, APPROVED_MINTERS_KEY))
             .unwrap_or_else(|| Vec::new(&env));
 
         approved_minters.push_back(minter);
-        env.storage().instance().set(&Symbol::new(&env, APPROVED_MINTERS_KEY), &approved_minters);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, APPROVED_MINTERS_KEY), &approved_minters);
 
         Ok(())
     }
 
     /// Helper to get storage key for an agent
-    fn get_agent_key(env: &Env, agent_id: u64) -> String {
-        String::from_str(env, &format!("{}{}", AGENT_KEY_PREFIX, agent_id))
+    fn get_agent_key(env: &Env, agent_id: u64) -> (Symbol, u64) {
+        (Symbol::new(env, "agent"), agent_id)
     }
 
     /// Helper to get storage key for agent lease status
-    fn get_agent_lease_key(env: &Env, agent_id: u64) -> String {
-        String::from_str(env, &format!("{}{}", AGENT_LEASE_STATUS_PREFIX, agent_id))
+    fn get_agent_lease_key(env: &Env, agent_id: u64) -> (Symbol, u64) {
+        (Symbol::new(env, "lease"), agent_id)
     }
 
     /// Verify caller is admin
     fn verify_admin(env: &Env, caller: &Address) -> Result<(), ContractError> {
-        let admin: Address = env.storage()
+        let admin: Address = env
+            .storage()
             .instance()
             .get(&Symbol::new(env, ADMIN_KEY))
             .ok_or(ContractError::Unauthorized)?;
@@ -130,14 +146,19 @@ impl AgentNFT {
     /// Verify caller is admin or approved minter
     fn verify_minter(env: &Env, caller: &Address) -> Result<(), ContractError> {
         // Check if admin
-        if let Some(admin) = env.storage().instance().get::<_, Address>(&Symbol::new(env, ADMIN_KEY)) {
+        if let Some(admin) = env
+            .storage()
+            .instance()
+            .get::<_, Address>(&Symbol::new(env, ADMIN_KEY))
+        {
             if caller == &admin {
                 return Ok(());
             }
         }
 
         // Check if approved minter
-        let approved_minters: Vec<Address> = env.storage()
+        let approved_minters: Vec<Address> = env
+            .storage()
             .instance()
             .get(&Symbol::new(env, APPROVED_MINTERS_KEY))
             .unwrap_or_else(|| Vec::new(env));
@@ -207,7 +228,8 @@ impl AgentNFT {
         Self::verify_minter(&env, &owner)?;
 
         // Convert u128 to u64 for storage (validate it fits)
-        let agent_id_u64 = agent_id.try_into()
+        let agent_id_u64 = agent_id
+            .try_into()
             .map_err(|_| ContractError::InvalidInput)?;
 
         // Enforce uniqueness of agent_id
@@ -224,14 +246,16 @@ impl AgentNFT {
         let agent = Agent {
             id: agent_id_u64,
             owner: owner.clone(),
-            name: String::from_str(&env, ""),  // Can be set via update_agent
-            model_hash: String::from_str(&env, ""),  // Can be set via update_agent
+            name: String::from_str(&env, ""), // Can be set via update_agent
+            model_hash: String::from_str(&env, ""), // Can be set via update_agent
             metadata_cid,
             capabilities: Vec::new(&env),
             evolution_level: initial_evolution_level,
             created_at: env.ledger().timestamp(),
             updated_at: env.ledger().timestamp(),
             nonce: 0,
+            escrow_locked: false,
+            escrow_holder: None,
         };
 
         // Persist agent data
@@ -244,7 +268,7 @@ impl AgentNFT {
         // Emit AgentMinted event
         env.events().publish(
             (Symbol::new(&env, "agent_nft"), AgentEvent::AgentMinted),
-            (agent_id_u64, owner.clone(), initial_evolution_level)
+            (agent_id_u64, owner.clone(), initial_evolution_level),
         );
 
         Ok(())
@@ -284,7 +308,8 @@ impl AgentNFT {
         }
 
         // Increment agent counter safely
-        let counter: u64 = env.storage()
+        let counter: u64 = env
+            .storage()
             .instance()
             .get(&Symbol::new(&env, AGENT_COUNTER_KEY))
             .unwrap_or(0);
@@ -303,8 +328,8 @@ impl AgentNFT {
             created_at: env.ledger().timestamp(),
             updated_at: env.ledger().timestamp(),
             nonce: 0,
-            // escrow_locked: false,
-            // escrow_holder: None,
+            escrow_locked: false,
+            escrow_holder: None,
         };
 
         // Store agent
@@ -315,12 +340,14 @@ impl AgentNFT {
         Self::set_agent_lease_status(&env, agent_id, false);
 
         // Update counter
-        env.storage().instance().set(&Symbol::new(&env, AGENT_COUNTER_KEY), &agent_id);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, AGENT_COUNTER_KEY), &agent_id);
 
         // Emit event
         env.events().publish(
             (Symbol::new(&env, "agent_nft"), AgentEvent::AgentMinted),
-            (agent_id, owner.clone())
+            (agent_id, owner.clone()),
         );
 
         Ok(agent_id)
@@ -354,7 +381,8 @@ impl AgentNFT {
         }
 
         let key = Self::get_agent_key(&env, agent_id);
-        let mut agent: Agent = env.storage()
+        let mut agent: Agent = env
+            .storage()
             .instance()
             .get(&key)
             .ok_or(ContractError::AgentNotFound)?;
@@ -392,14 +420,17 @@ impl AgentNFT {
         }
 
         // Increment nonce for replay protection
-        agent.nonce = agent.nonce.checked_add(1).ok_or(ContractError::OverflowError)?;
+        agent.nonce = agent
+            .nonce
+            .checked_add(1)
+            .ok_or(ContractError::OverflowError)?;
         agent.updated_at = env.ledger().timestamp();
 
         env.storage().instance().set(&key, &agent);
 
         env.events().publish(
             (Symbol::new(&env, "agent_nft"), AgentEvent::AgentUpdated),
-            (agent_id, owner)
+            (agent_id, owner),
         );
 
         Ok(())
@@ -445,7 +476,8 @@ impl AgentNFT {
         }
 
         let key = Self::get_agent_key(&env, agent_id);
-        let mut agent: Agent = env.storage()
+        let mut agent: Agent = env
+            .storage()
             .instance()
             .get(&key)
             .ok_or(ContractError::AgentNotFound)?;
@@ -460,14 +492,17 @@ impl AgentNFT {
 
         let previous_owner = agent.owner.clone();
         agent.owner = to.clone();
-        agent.nonce = agent.nonce.checked_add(1).ok_or(ContractError::OverflowError)?;
+        agent.nonce = agent
+            .nonce
+            .checked_add(1)
+            .ok_or(ContractError::OverflowError)?;
         agent.updated_at = env.ledger().timestamp();
 
         env.storage().instance().set(&key, &agent);
 
         env.events().publish(
             (Symbol::new(&env, "agent_nft"), AgentEvent::AgentTransferred),
-            (agent_id, previous_owner, to.clone())
+            (agent_id, previous_owner, to.clone()),
         );
 
         Ok(())
@@ -516,7 +551,7 @@ impl AgentNFT {
 
         env.events().publish(
             (Symbol::new(&env, "agent_nft"), AgentEvent::LeaseStarted),
-            (agent_id, env.ledger().timestamp())
+            (agent_id, env.ledger().timestamp()),
         );
 
         Ok(())
@@ -532,7 +567,7 @@ impl AgentNFT {
 
         env.events().publish(
             (Symbol::new(&env, "agent_nft"), AgentEvent::LeaseEnded),
-            (agent_id, env.ledger().timestamp())
+            (agent_id, env.ledger().timestamp()),
         );
 
         Ok(())

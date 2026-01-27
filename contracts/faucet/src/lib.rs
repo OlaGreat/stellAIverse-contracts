@@ -18,21 +18,35 @@ pub struct Faucet;
 impl Faucet {
     /// Initialize faucet (admin only)
     pub fn init_faucet(env: Env, admin: Address, testnet_only: bool) {
-        let admin_data = env.storage().instance().get::<_, Address>(&Symbol::new(&env, ADMIN_KEY));
+        let admin_data = env
+            .storage()
+            .instance()
+            .get::<_, Address>(&Symbol::new(&env, ADMIN_KEY));
         if admin_data.is_some() {
             panic!("Contract already initialized");
         }
 
         admin.require_auth();
-        env.storage().instance().set(&Symbol::new(&env, ADMIN_KEY), &admin);
-        env.storage().instance().set(&Symbol::new(&env, CLAIM_COOLDOWN_KEY), &DEFAULT_COOLDOWN_SECONDS);
-        env.storage().instance().set(&Symbol::new(&env, MAX_CLAIMS_PER_PERIOD_KEY), &DEFAULT_MAX_CLAIMS);
-        env.storage().instance().set(&Symbol::new(&env, TESTNET_FLAG_KEY), &testnet_only);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, ADMIN_KEY), &admin);
+        env.storage().instance().set(
+            &Symbol::new(&env, CLAIM_COOLDOWN_KEY),
+            &DEFAULT_COOLDOWN_SECONDS,
+        );
+        env.storage().instance().set(
+            &Symbol::new(&env, MAX_CLAIMS_PER_PERIOD_KEY),
+            &DEFAULT_MAX_CLAIMS,
+        );
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, TESTNET_FLAG_KEY), &testnet_only);
     }
 
     /// Verify caller is admin
     fn verify_admin(env: &Env, caller: &Address) {
-        let admin: Address = env.storage()
+        let admin: Address = env
+            .storage()
             .instance()
             .get(&Symbol::new(env, ADMIN_KEY))
             .expect("Admin not set");
@@ -75,22 +89,22 @@ impl Faucet {
         let claim_count_key = (Symbol::new(&env, "claim_count"), claimer.clone());
         env.storage().instance().set(&claim_count_key, &1u32);
 
-        env.events().publish(
-            (Symbol::new(&env, "agent_claimed"),),
-            (agent_id, claimer)
-        );
+        env.events()
+            .publish((Symbol::new(&env, "agent_claimed"),), (agent_id, claimer));
 
         agent_id
     }
 
     /// Check if an address is eligible for a faucet claim
     pub fn check_eligibility(env: Env, address: Address) -> bool {
-        let cooldown: u64 = env.storage()
+        let cooldown: u64 = env
+            .storage()
             .instance()
             .get(&Symbol::new(&env, CLAIM_COOLDOWN_KEY))
             .unwrap_or(DEFAULT_COOLDOWN_SECONDS);
 
-        let max_claims: u32 = env.storage()
+        let max_claims: u32 = env
+            .storage()
             .instance()
             .get(&Symbol::new(&env, MAX_CLAIMS_PER_PERIOD_KEY))
             .unwrap_or(DEFAULT_MAX_CLAIMS);
@@ -101,7 +115,7 @@ impl Faucet {
         match last_claim {
             Some(timestamp) => {
                 let now = env.ledger().timestamp();
-                let elapsed = now.checked_sub(timestamp).unwrap_or(0);
+                let elapsed = now.saturating_sub(timestamp);
 
                 // If cooldown has passed, eligible again
                 if elapsed >= cooldown {
@@ -110,10 +124,7 @@ impl Faucet {
 
                 // Check claim count within current period
                 let claim_count_key = (Symbol::new(&env, "claim_count"), address.clone());
-                let claims: u32 = env.storage()
-                    .instance()
-                    .get(&claim_count_key)
-                    .unwrap_or(0);
+                let claims: u32 = env.storage().instance().get(&claim_count_key).unwrap_or(0);
 
                 claims < max_claims
             }
@@ -122,7 +133,12 @@ impl Faucet {
     }
 
     /// Admin function: Set faucet parameters
-    pub fn set_parameters(env: Env, admin: Address, claim_cooldown_seconds: u64, max_claims_per_period: u32) {
+    pub fn set_parameters(
+        env: Env,
+        admin: Address,
+        claim_cooldown_seconds: u64,
+        max_claims_per_period: u32,
+    ) {
         admin.require_auth();
         Self::verify_admin(&env, &admin);
 
@@ -134,23 +150,31 @@ impl Faucet {
             panic!("Max claims must be between 1 and 100");
         }
 
-        env.storage().instance().set(&Symbol::new(&env, CLAIM_COOLDOWN_KEY), &claim_cooldown_seconds);
-        env.storage().instance().set(&Symbol::new(&env, MAX_CLAIMS_PER_PERIOD_KEY), &max_claims_per_period);
+        env.storage().instance().set(
+            &Symbol::new(&env, CLAIM_COOLDOWN_KEY),
+            &claim_cooldown_seconds,
+        );
+        env.storage().instance().set(
+            &Symbol::new(&env, MAX_CLAIMS_PER_PERIOD_KEY),
+            &max_claims_per_period,
+        );
 
         env.events().publish(
             (Symbol::new(&env, "parameters_updated"),),
-            (claim_cooldown_seconds, max_claims_per_period)
+            (claim_cooldown_seconds, max_claims_per_period),
         );
     }
 
     /// Get current faucet parameters
     pub fn get_parameters(env: Env) -> (u64, u32) {
-        let cooldown: u64 = env.storage()
+        let cooldown: u64 = env
+            .storage()
             .instance()
             .get(&Symbol::new(&env, CLAIM_COOLDOWN_KEY))
             .unwrap_or(DEFAULT_COOLDOWN_SECONDS);
 
-        let max_claims: u32 = env.storage()
+        let max_claims: u32 = env
+            .storage()
             .instance()
             .get(&Symbol::new(&env, MAX_CLAIMS_PER_PERIOD_KEY))
             .unwrap_or(DEFAULT_MAX_CLAIMS);
@@ -160,7 +184,8 @@ impl Faucet {
 
     /// Get remaining cooldown time for an address
     pub fn get_remaining_cooldown(env: Env, address: Address) -> u64 {
-        let cooldown: u64 = env.storage()
+        let cooldown: u64 = env
+            .storage()
             .instance()
             .get(&Symbol::new(&env, CLAIM_COOLDOWN_KEY))
             .unwrap_or(DEFAULT_COOLDOWN_SECONDS);
@@ -171,12 +196,12 @@ impl Faucet {
         match last_claim {
             Some(timestamp) => {
                 let now = env.ledger().timestamp();
-                let elapsed = now.checked_sub(timestamp).unwrap_or(0);
+                let elapsed = now.saturating_sub(timestamp);
 
                 if elapsed >= cooldown {
                     0
                 } else {
-                    cooldown.checked_sub(elapsed).unwrap_or(0)
+                    cooldown.saturating_sub(elapsed)
                 }
             }
             None => 0,
@@ -187,7 +212,10 @@ impl Faucet {
     pub fn pause_faucet(env: Env, admin: Address, paused: bool) {
         admin.require_auth();
         Self::verify_admin(&env, &admin);
-        env.storage().instance().set(&Symbol::new(&env, TESTNET_FLAG_KEY), &!paused);
-        env.events().publish((Symbol::new(&env, "faucet_paused"),), (paused,));
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, TESTNET_FLAG_KEY), &!paused);
+        env.events()
+            .publish((Symbol::new(&env, "faucet_paused"),), (paused,));
     }
 }

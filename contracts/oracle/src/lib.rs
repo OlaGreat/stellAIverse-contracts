@@ -1,7 +1,5 @@
 #![no_std]
-extern crate alloc;
 
-use alloc::string::String; // only needed for conversions
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec};
 use stellai_lib::OracleData;
 
@@ -21,10 +19,14 @@ impl Oracle {
         }
 
         admin.require_auth();
-        env.storage().instance().set(&Symbol::new(&env, ADMIN_KEY), &admin);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, ADMIN_KEY), &admin);
 
         let providers: Vec<Address> = Vec::new(&env);
-        env.storage().instance().set(&Symbol::new(&env, PROVIDER_LIST_KEY), &providers);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, PROVIDER_LIST_KEY), &providers);
     }
 
     fn verify_admin(env: &Env, caller: &Address) {
@@ -65,13 +67,15 @@ impl Oracle {
             .unwrap_or_else(|| Vec::new(&env));
 
         for p in providers.iter() {
-            if &p == &provider {
+            if p == provider {
                 panic!("Provider already registered");
             }
         }
 
         providers.push_back(provider.clone());
-        env.storage().instance().set(&Symbol::new(&env, PROVIDER_LIST_KEY), &providers);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, PROVIDER_LIST_KEY), &providers);
 
         env.events().publish(
             (Symbol::new(&env, "provider_registered"),),
@@ -79,7 +83,7 @@ impl Oracle {
         );
     }
 
-    pub fn submit_data(env: Env, provider: Address, key: String, value: i128) {
+    pub fn submit_data(env: Env, provider: Address, key: Symbol, value: i128) {
         provider.require_auth();
 
         if !Self::is_authorized_provider(&env, &provider) {
@@ -88,10 +92,8 @@ impl Oracle {
 
         let timestamp = env.ledger().timestamp();
 
-        let storage_key = Symbol::new(&env, key.as_str());
-
         let oracle_data = OracleData {
-            key: storage_key.clone(),
+            key: key.clone(),
             value,
             timestamp,
             provider: provider.clone(),
@@ -99,11 +101,7 @@ impl Oracle {
             source: None,
         };
 
-        // Convert soroban_sdk::String to &str for Symbol::new
-        let key_str: &str = key.as_str();
-        let storage_key = Symbol::new(&env, key_str);
-
-        env.storage().instance().set(&storage_key, &oracle_data);
+        env.storage().instance().set(&key, &oracle_data);
 
         env.events().publish(
             (Symbol::new(&env, "data_submitted"),),
@@ -111,9 +109,8 @@ impl Oracle {
         );
     }
 
-    pub fn get_data(env: Env, key: String) -> Option<OracleData> {
-        let storage_key = Symbol::new(&env, key.as_str());
-        env.storage().instance().get(&storage_key)
+    pub fn get_data(env: Env, key: Symbol) -> Option<OracleData> {
+        env.storage().instance().get(&key)
     }
 
     pub fn deregister_provider(env: Env, admin: Address, provider: Address) {
@@ -130,7 +127,7 @@ impl Oracle {
         let mut found = false;
 
         for p in providers.iter() {
-            if &p != &provider {
+            if p != provider {
                 updated_providers.push_back(p.clone());
             } else {
                 found = true;

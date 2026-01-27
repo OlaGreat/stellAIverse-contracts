@@ -13,14 +13,21 @@ pub struct Evolution;
 impl Evolution {
     /// Initialize contract with admin
     pub fn init_contract(env: Env, admin: Address) {
-        let admin_data = env.storage().instance().get::<_, Address>(&Symbol::new(&env, ADMIN_KEY));
+        let admin_data = env
+            .storage()
+            .instance()
+            .get::<_, Address>(&Symbol::new(&env, ADMIN_KEY));
         if admin_data.is_some() {
             panic!("Contract already initialized");
         }
 
         admin.require_auth();
-        env.storage().instance().set(&Symbol::new(&env, ADMIN_KEY), &admin);
-        env.storage().instance().set(&Symbol::new(&env, REQUEST_COUNTER_KEY), &0u64);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, ADMIN_KEY), &admin);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, REQUEST_COUNTER_KEY), &0u64);
     }
 
     /// Create an evolution request
@@ -34,7 +41,8 @@ impl Evolution {
             panic!("Stake amount must be positive");
         }
 
-        let counter: u64 = env.storage()
+        let counter: u64 = env
+            .storage()
             .instance()
             .get(&Symbol::new(&env, REQUEST_COUNTER_KEY))
             .unwrap_or(0);
@@ -53,11 +61,13 @@ impl Evolution {
         // Use tuple as key (prefix, request_id)
         let request_key = (Symbol::new(&env, "request"), request_id);
         env.storage().instance().set(&request_key, &request);
-        env.storage().instance().set(&Symbol::new(&env, REQUEST_COUNTER_KEY), &request_id);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, REQUEST_COUNTER_KEY), &request_id);
 
         env.events().publish(
             (Symbol::new(&env, "request_created"),),
-            (request_id, agent_id, owner, stake_amount)
+            (request_id, agent_id, owner, stake_amount),
         );
 
         request_id
