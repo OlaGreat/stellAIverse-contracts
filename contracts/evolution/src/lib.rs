@@ -1,6 +1,13 @@
 #![no_std]
 
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
+// Step 2: Add the module import
+mod evolution_history;
+use evolution_history::{
+    append_evolution, get_evolution_count, get_evolution_history, 
+    get_latest_evolution, get_evolution_at_index, EvolutionRecord,
+};
+
+use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec}; // Added Vec
 use stellai_lib::{EvolutionRequest, EvolutionStatus};
 
 const ADMIN_KEY: &str = "admin";
@@ -82,4 +89,73 @@ impl Evolution {
         let request_key = (Symbol::new(&env, "request"), request_id);
         env.storage().instance().get(&request_key)
     }
-}
+
+    /// Execute an evolution request (Admin only)
+    /// This approves the request and records the history.
+    pub fn execute_evolution(
+        env: Env, 
+        request_id: u64, 
+        from_stage: u32, 
+        to_stage: u32
+    ) {
+        // 1. Verify Admin Auth
+        let admin: Address = env.storage().instance().get(&Symbol::new(&env, ADMIN_KEY)).unwrap();
+        admin.require_auth();
+
+        // 2. Get the request
+        let request_key = (Symbol::new(&env, "request"), request_id);
+        let mut request: EvolutionRequest = env.storage().instance().get(&request_key).expect("Request not found");
+
+        // 3. Verify status
+        if request.status != EvolutionStatus::Pending {
+            panic!("Request is not pending");
+        }
+
+        // 4. Update status
+        request.status = EvolutionStatus::Completed;
+        request.completed_at = Some(env.ledger().timestamp());
+        env.storage().instance().set(&request_key, &request);
+
+        // 5. Record evolution in immutable history (Step 3)
+        // Note: We use the owner's address to track the history
+        append_evolution(
+            &env,
+            &request.owner, 
+            from_stage,
+            to_stage,
+            Symbol::new(&env, "admin_exe"),
+        );
+        
+        // 6. Emit event
+        env.events().publish(
+            (Symbol::new(&env, "evolution_executed"),),
+            (request_id, request.agent_id, to_stage),
+        );
+    }
+
+    // Step 4: Add public getter functions
+    
+    /// Get full evolution history for an agent
+    pub fn get_agent_evolution_history(env: Env, agent_id: Address) -> Vec<EvolutionRecord> {
+        get_evolution_history(&env, &agent_id)
+    }
+
+    /// Get total number of evolutions for an agent
+    pub fn get_agent_evolution_count(env: Env, agent_id: Address) -> u32 {
+        get_evolution_count(&env, &agent_id)
+    }
+
+    /// Get evolution record at specific index
+    pub fn get_agent_evolution_at(env: Env, agent_id: Address, index: u32) -> Option<EvolutionRecord> {
+        get_evolution_at_index(&env, &agent_id, index)
+    }
+
+    /// Get most recent evolution
+    pub fn get_agent_latest_evolution(env: Env, agent_id: Address) -> Option<EvolutionRecord> {
+        get_latest_evolution(&env, &agent_id)
+    }
+} // <--- End of impl Evolution
+
+// Test module must be outside the impl block
+#[cfg(test)]
+mod test;
