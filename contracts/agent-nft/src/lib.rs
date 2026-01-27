@@ -2,6 +2,7 @@
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, Address, Env, String, Symbol, Vec,
 };
+use stellai_lib::{RoyaltyInfo, MAX_ROYALTY_FEE};
 
 const ADMIN_KEY: &str = "admin";
 const AGENT_COUNTER_KEY: &str = "agent_counter";
@@ -28,6 +29,7 @@ pub enum ContractError {
     OverflowError = 8,
     SameAddressTransfer = 9,
     NotOwner = 10,
+    InvalidRoyaltyFee = 11,
 }
 
 // ============================================================================
@@ -129,6 +131,19 @@ impl AgentNFT {
         (Symbol::new(env, "lease"), agent_id)
     }
 
+    /// Helper to get storage key for agent royalty info
+    fn get_royalty_key(env: &Env, agent_id: u64) -> (Symbol, u64) {
+        (Symbol::new(env, "royalty"), agent_id)
+    }
+
+    /// Validate royalty fee is within acceptable bounds
+    fn validate_royalty_fee(fee: u32) -> Result<(), ContractError> {
+        if fee > MAX_ROYALTY_FEE {
+            return Err(ContractError::InvalidRoyaltyFee);
+        }
+        Ok(())
+    }
+
     /// Verify caller is admin
     fn verify_admin(env: &Env, caller: &Address) -> Result<(), ContractError> {
         let admin: Address = env
@@ -207,6 +222,8 @@ impl AgentNFT {
     /// * `owner` - Address of the agent owner
     /// * `metadata_cid` - IPFS CID for agent metadata
     /// * `initial_evolution_level` - Starting evolution level
+    /// * `royalty_recipient` - Optional address to receive royalty payments (basis points)
+    /// * `royalty_fee` - Optional royalty fee in basis points (0-10000, where 10000 = 100%)
     ///
     /// # Returns
     /// Result<(), ContractError>
@@ -215,12 +232,15 @@ impl AgentNFT {
     /// - ContractError::Unauthorized if caller is not admin or approved minter
     /// - ContractError::DuplicateAgentId if agent_id already exists
     /// - ContractError::InvalidInput if validation fails
+    /// - ContractError::InvalidRoyaltyFee if royalty fee exceeds maximum (10000)
     pub fn mint_agent(
         env: Env,
         agent_id: u128,
         owner: Address,
         metadata_cid: String,
         initial_evolution_level: u32,
+        royalty_recipient: Option<Address>,
+        royalty_fee: Option<u32>,
     ) -> Result<(), ContractError> {
         owner.require_auth();
 
@@ -239,6 +259,20 @@ impl AgentNFT {
 
         // Input validation
         if metadata_cid.len() > MAX_STRING_LENGTH.try_into().unwrap() {
+            return Err(ContractError::InvalidInput);
+        }
+
+        // Validate and store royalty info if provided
+        if let (Some(recipient), Some(fee)) = (royalty_recipient, royalty_fee) {
+            Self::validate_royalty_fee(fee)?;
+            let royalty_info = RoyaltyInfo {
+                recipient,
+                fee,
+            };
+            let royalty_key = Self::get_royalty_key(&env, agent_id_u64);
+            env.storage().instance().set(&royalty_key, &royalty_info);
+        } else if royalty_recipient.is_some() || royalty_fee.is_some() {
+            // Both must be provided together or neither
             return Err(ContractError::InvalidInput);
         }
 
@@ -275,12 +309,30 @@ impl AgentNFT {
     }
 
     /// Legacy mint function for backward compatibility
+    ///
+    /// # Arguments
+    /// * `owner` - Address of the agent owner
+    /// * `name` - Agent name
+    /// * `model_hash` - Hash of the agent model
+    /// * `capabilities` - List of agent capabilities
+    /// * `royalty_recipient` - Optional address to receive royalty payments
+    /// * `royalty_fee` - Optional royalty fee in basis points (0-10000, where 10000 = 100%)
+    ///
+    /// # Returns
+    /// Result<u64, ContractError> - The minted agent ID
+    ///
+    /// # Errors
+    /// - ContractError::Unauthorized if caller is not admin or approved minter
+    /// - ContractError::InvalidInput if validation fails
+    /// - ContractError::InvalidRoyaltyFee if royalty fee exceeds maximum (10000)
     pub fn mint_agent_legacy(
         env: Env,
         owner: Address,
         name: String,
         model_hash: String,
         capabilities: Vec<String>,
+        royalty_recipient: Option<Address>,
+        royalty_fee: Option<u32>,
     ) -> Result<u64, ContractError> {
         owner.require_auth();
 
@@ -305,6 +357,14 @@ impl AgentNFT {
                     return Err(ContractError::InvalidInput);
                 }
             }
+        }
+
+        // Validate and store royalty info if provided
+        if let (Some(recipient), Some(fee)) = (royalty_recipient, royalty_fee) {
+            Self::validate_royalty_fee(fee)?;
+        } else if royalty_recipient.is_some() || royalty_fee.is_some() {
+            // Both must be provided together or neither
+            return Err(ContractError::InvalidInput);
         }
 
         // Increment agent counter safely
@@ -338,6 +398,16 @@ impl AgentNFT {
 
         // Initialize lease status
         Self::set_agent_lease_status(&env, agent_id, false);
+
+        // Store royalty info if provided
+        if let (Some(recipient), Some(fee)) = (royalty_recipient, royalty_fee) {
+            let royalty_info = RoyaltyInfo {
+                recipient,
+                fee,
+            };
+            let royalty_key = Self::get_royalty_key(&env, agent_id);
+            env.storage().instance().set(&royalty_key, &royalty_info);
+        }
 
         // Update counter
         env.storage()
@@ -579,5 +649,24 @@ impl AgentNFT {
             return Err(ContractError::InvalidAgentId);
         }
         Ok(Self::is_agent_leased(&env, agent_id))
+    }
+
+    /// Get royalty info for an agent
+    ///
+    /// # Arguments
+    /// * `agent_id` - The agent ID to query
+    ///
+    /// # Returns
+    /// Result<Option<RoyaltyInfo>, ContractError> - Royalty info if set, None if not set
+    ///
+    /// # Errors
+    /// - ContractError::InvalidAgentId if agent_id is 0
+    pub fn get_royalty(env: Env, agent_id: u64) -> Result<Option<RoyaltyInfo>, ContractError> {
+        if agent_id == 0 {
+            return Err(ContractError::InvalidAgentId);
+        }
+
+        let royalty_key = Self::get_royalty_key(&env, agent_id);
+        Ok(env.storage().instance().get(&royalty_key))
     }
 }
