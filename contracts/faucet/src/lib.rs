@@ -1,5 +1,7 @@
 #![no_std]
+extern crate alloc;
 
+// use soroban_sdk::{contract, contractimpl, Address, Env, String, Symbol, Map};
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 use stellai_lib::{
     ADMIN_KEY, CLAIM_COOLDOWN_KEY, DEFAULT_COOLDOWN_SECONDS, DEFAULT_MAX_CLAIMS,

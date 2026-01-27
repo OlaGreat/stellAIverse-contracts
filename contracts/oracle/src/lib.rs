@@ -1,5 +1,8 @@
 #![no_std]
 
+mod tests;
+mod testutils;
+
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec};
 use stellai_lib::{OracleData, ADMIN_KEY, PROVIDER_LIST_KEY};
 
