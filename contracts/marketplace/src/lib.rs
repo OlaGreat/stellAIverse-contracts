@@ -3,6 +3,13 @@
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 use stellai_lib::{Listing, ListingType, RoyaltyInfo, ADMIN_KEY, LISTING_COUNTER_KEY};
 
+use soroban_sdk::{
+    contract, contractimpl, Env, Address, Symbol,
+};
+
+mod storage;
+
+use storage::*;
 #[contract]
 pub struct Marketplace;
 
@@ -183,5 +190,82 @@ impl Marketplace {
 
         let royalty_key = (Symbol::new(&env, "royalty"), agent_id);
         env.storage().instance().get(&royalty_key)
+    }
+
+
+      // ---------------- INIT ----------------
+    pub fn init(
+        env: Env,
+        admin: Address,
+        payment_token: Address,
+        royalty_bps: u32, // e.g. 500 = 5%
+    ) {
+        admin.require_auth();
+
+        assert!(royalty_bps <= 10_000, "Invalid royalty");
+
+        set_admin(&env, &admin);
+        set_payment_token(&env, payment_token);
+        set_royalty_bps(&env, royalty_bps);
+    }
+
+    // ---------------- BUY AGENT ----------------
+    pub fn buy_agent(
+        env: Env,
+        buyer: Address,
+        seller: Address,
+        creator: Address,
+        agent_contract: Address,
+        token_id: u128,
+        price: i128,
+    ) {
+        buyer.require_auth();
+        assert!(price > 0, "Invalid price");
+
+        let payment_token = get_payment_token(&env);
+        let royalty_bps = get_royalty_bps(&env);
+
+        // 1️⃣ Validate seller owns NFT
+        let owner: Address = agent_contract.call(
+            &Symbol::new(&env, "owner_of"),
+            (token_id,)
+        );
+        assert!(owner == seller, "Seller is not owner");
+
+        // 2️⃣ Calculate royalty + seller payout
+        let royalty = calculate_royalty(price, royalty_bps);
+        let seller_amount = price - royalty;
+        assert!(seller_amount > 0, "Royalty too high");
+
+        // 3️⃣ Transfer royalty to creator
+        payment_token.call::<()>(
+            &Symbol::new(&env, "transfer"),
+            (buyer.clone(), creator.clone(), royalty)
+        );
+
+        // 4️⃣ Transfer seller payout
+        payment_token.call::<()>(
+            &Symbol::new(&env, "transfer"),
+            (buyer.clone(), seller.clone(), seller_amount)
+        );
+
+        // 5️⃣ Transfer NFT to buyer
+        agent_contract.call::<()>(
+            &Symbol::new(&env, "transfer"),
+            (seller.clone(), buyer.clone(), token_id)
+        );
+
+        // 6️⃣ Emit event
+        env.events().publish(
+            (Symbol::new(&env, "AgentBought"),),
+            (
+                buyer,
+                seller,
+                creator,
+                token_id,
+                price,
+                royalty,
+            )
+        );
     }
 }
