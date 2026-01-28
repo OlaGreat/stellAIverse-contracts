@@ -3,6 +3,7 @@ extern crate std;
 
 use soroban_sdk::{Address, Env, String, Bytes, Symbol};
 use crate::Evolution;
+use oracle::testutils::MockOracle;
 
 struct TestSetup {
     env: Env,
@@ -76,16 +77,14 @@ impl TestSetup {
     }
 
     fn create_attestation(&self, request_id: u64, agent_id: u64, nonce: u64) -> shared::EvolutionAttestation {
-        shared::EvolutionAttestation {
+        MockOracle::generate_attestation(
+            &self.env,
             request_id,
             agent_id,
-            oracle_provider: self.oracle_provider.clone(),
-            new_model_hash: String::from_str(&self.env, "upgraded_hash_v1"),
-            attestation_data: Bytes::from_slice(&self.env, b"training_data_hash"),
-            signature: Bytes::from_slice(&self.env, &[0u8; 64]),
-            timestamp: self.env.ledger().timestamp(),
+            self.oracle_provider.clone(),
+            "upgraded_hash_v1",
             nonce,
-        }
+        )
     }
 
     /// Set agent cooldown timestamp for testing

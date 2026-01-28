@@ -1,29 +1,14 @@
-#![no_std]
-pub mod errors;
-
-use soroban_sdk::{contracttype, symbol_short, Address, Bytes, String, Symbol, Vec};
-
-/// Oracle data entry
-#[derive(Clone, Debug)]
-#[contracttype]
-pub struct OracleData {
-    pub key: Symbol,
-    pub value: i128,
-    pub timestamp: u64,
-    pub provider: Address,
-    pub signature: Option<String>,
-    pub source: Option<String>,
-}
+#![allow(unused_imports)]
+use soroban_sdk::{contracttype, Address, Bytes, String, Vec};
 
 /// Represents an agent's metadata and state
-#[derive(Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[derive(Clone)]
 #[contracttype]
 pub struct Agent {
     pub id: u64,
     pub owner: Address,
     pub name: String,
     pub model_hash: String,
-    pub metadata_cid: String,
     pub capabilities: Vec<String>,
     pub evolution_level: u32,
     pub created_at: u64,
@@ -86,12 +71,22 @@ pub enum EvolutionStatus {
     Failed = 3,
 }
 
+/// Oracle data entry
+#[derive(Clone)]
+#[contracttype]
+pub struct OracleData {
+    pub key: String,
+    pub value: String,
+    pub timestamp: u64,
+    pub source: String,
+}
+
 /// Royalty information for marketplace transactions
 #[derive(Clone)]
 #[contracttype]
 pub struct RoyaltyInfo {
     pub recipient: Address,
-    pub fee: u32, // 0-10000 representing 0-100%
+    pub percentage: u32, // 0-10000 representing 0-100%
 }
 
 /// Oracle attestation for evolution completion (signed by oracle provider)
@@ -109,15 +104,7 @@ pub struct EvolutionAttestation {
 }
 
 /// Constants for security hardening
-// Config
-pub const ADMIN_KEY: &str = "admin";
-pub const MAX_STRING_LENGTH: u32 = 256;
-pub const MAX_ROYALTY_FEE: u32 = 10000;
-pub const MAX_DATA_SIZE: u32 = 65536;
-pub const MAX_HISTORY_SIZE: u32 = 1000;
-pub const MAX_HISTORY_QUERY_LIMIT: u32 = 500;
-pub const DEFAULT_RATE_LIMIT_OPERATIONS: u32 = 100;
-pub const DEFAULT_RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
+pub const MAX_STRING_LENGTH: usize = 256;
 pub const MAX_CAPABILITIES: usize = 32;
 pub const MAX_ROYALTY_PERCENTAGE: u32 = 10000; // 100%
 pub const MIN_ROYALTY_PERCENTAGE: u32 = 0;
@@ -129,17 +116,37 @@ pub const MAX_AGE_SECONDS: u64 = 365 * 24 * 60 * 60; // ~1 year max data age
 pub const ATTESTATION_SIGNATURE_SIZE: usize = 64; // Ed25519 signature size
 pub const MAX_ATTESTATION_DATA_SIZE: usize = 1024; // Max size for attestation data
 
-// Storage keys
-pub const EXEC_CTR_KEY: Symbol = symbol_short!("exec_ctr");
-pub const REQUEST_COUNTER_KEY: &str = "request_counter";
-pub const CLAIM_COOLDOWN_KEY: &str = "claim_cooldown";
-pub const MAX_CLAIMS_PER_PERIOD_KEY: &str = "max_claims_per_period";
-pub const TESTNET_FLAG_KEY: &str = "testnet_mode";
-pub const DEFAULT_COOLDOWN_SECONDS: u64 = 86400; // 24 hours
-pub const DEFAULT_MAX_CLAIMS: u32 = 1;
-pub const LISTING_COUNTER_KEY: &str = "listing_counter";
-pub const PROVIDER_LIST_KEY: &str = "providers";
-pub const AGENT_COUNTER_KEY: &str = "agent_counter";
-pub const AGENT_KEY_PREFIX: &str = "agent_";
-pub const AGENT_LEASE_STATUS_PREFIX: &str = "agent_lease_";
-pub const APPROVED_MINTERS_KEY: &str = "approved_minters";
+#[cfg(any(test, feature = "testutils"))]
+pub mod testutils {
+    use super::*;
+    use soroban_sdk::{Address, Bytes, Env, String, Vec};
+
+    pub fn create_oracle_data(env: &Env, key: &str, value: &str, source: &str) -> OracleData {
+        OracleData {
+            key: String::from_str(env, key),
+            value: String::from_str(env, value),
+            timestamp: env.ledger().timestamp(),
+            source: String::from_str(env, source),
+        }
+    }
+
+    pub fn create_evolution_attestation(
+        env: &Env,
+        request_id: u64,
+        agent_id: u64,
+        oracle_provider: Address,
+        new_model_hash: &str,
+        nonce: u64,
+    ) -> EvolutionAttestation {
+        EvolutionAttestation {
+            request_id,
+            agent_id,
+            oracle_provider,
+            new_model_hash: String::from_str(env, new_model_hash),
+            attestation_data: Bytes::from_slice(env, b"mock_attestation_data"),
+            signature: Bytes::from_slice(env, &[0u8; 64]),
+            timestamp: env.ledger().timestamp(),
+            nonce,
+        }
+    }
+}

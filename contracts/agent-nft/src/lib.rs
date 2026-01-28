@@ -32,25 +32,13 @@ pub enum ContractError {
     InvalidRoyaltyFee = 11,
 }
 
-// ============================================================================
-// Agent data structure
-// ============================================================================
-#[contracttype]
-#[derive(Clone, Debug, PartialEq)]
-pub struct Agent {
-    pub id: u64,
-    pub owner: Address,
-    pub name: String,
-    pub model_hash: String,
-    pub metadata_cid: String,
-    pub capabilities: Vec<String>,
-    pub evolution_level: u32,
-    pub created_at: u64,
-    pub updated_at: u64,
-    pub nonce: u64,
-    pub escrow_locked: bool,
-    pub escrow_holder: Option<Address>,
-}
+extern crate alloc;
+use alloc::format;
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
+use stellai_lib::{
+    errors::ContractError, Agent, ADMIN_KEY, AGENT_COUNTER_KEY, AGENT_KEY_PREFIX,
+    AGENT_LEASE_STATUS_PREFIX, APPROVED_MINTERS_KEY, MAX_CAPABILITIES, MAX_STRING_LENGTH,
+};
 
 // ============================================================================
 // Event types
