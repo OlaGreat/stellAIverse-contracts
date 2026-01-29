@@ -134,7 +134,7 @@ impl ExecutionHub {
     }
 
     /// Execute action with validation, replay protection, and proof storage (Issue #10)
-    /// 
+    ///
     /// # Arguments
     /// * `agent_id` - The agent executing the action
     /// * `executor` - Address of the executor
@@ -177,14 +177,38 @@ impl ExecutionHub {
 
         let execution_id = Self::next_execution_id(&env);
         let timestamp = env.ledger().timestamp();
-        
+
         Self::set_action_nonce(&env, agent_id, nonce);
-        Self::record_action_in_history(&env, agent_id, execution_id, &action, &executor, nonce, &execution_hash);
-        Self::store_execution_receipt(&env, execution_id, agent_id, &action, &executor, timestamp, &execution_hash);
+        Self::record_action_in_history(
+            &env,
+            agent_id,
+            execution_id,
+            &action,
+            &executor,
+            nonce,
+            &execution_hash,
+        );
+        Self::store_execution_receipt(
+            &env,
+            execution_id,
+            agent_id,
+            &action,
+            &executor,
+            timestamp,
+            &execution_hash,
+        );
 
         env.events().publish(
             (symbol_short!("act_exec"),),
-            (execution_id, agent_id, action.clone(), executor.clone(), timestamp, nonce, execution_hash.clone()),
+            (
+                execution_id,
+                agent_id,
+                action.clone(),
+                executor.clone(),
+                timestamp,
+                nonce,
+                execution_hash.clone(),
+            ),
         );
 
         execution_id
@@ -257,7 +281,7 @@ impl ExecutionHub {
     /// Returns a list of execution receipts for the given agent
     pub fn get_agent_receipts(env: Env, agent_id: u64, limit: u32) -> Vec<ExecutionReceipt> {
         Self::validate_agent_id(agent_id);
-        
+
         if limit > MAX_HISTORY_QUERY_LIMIT {
             panic!("Limit exceeds maximum allowed (500)");
         }
@@ -280,7 +304,8 @@ impl ExecutionHub {
 
         for i in start_idx..history.len() {
             if let Some(record) = history.get(i) {
-                if let Some(receipt) = Self::get_execution_receipt(env.clone(), record.execution_id) {
+                if let Some(receipt) = Self::get_execution_receipt(env.clone(), record.execution_id)
+                {
                     receipts.push_back(receipt);
                 }
             }
@@ -650,7 +675,7 @@ mod test {
         // Verify receipt was stored
         let receipt = client.get_execution_receipt(&exec_id);
         assert!(receipt.is_some());
-        
+
         let receipt = receipt.unwrap();
         assert_eq!(receipt.execution_id, exec_id);
         assert_eq!(receipt.agent_id, 1);
@@ -729,7 +754,7 @@ mod test {
 
         // Get receipt
         let receipt_1 = client.get_execution_receipt(&exec_id).unwrap();
-        
+
         // Execute another action
         let exec_hash_2 = Bytes::from_array(&env, &[0x44, 0x55, 0x66]);
         client.execute_action(&1, &executor, &action, &params, &2, &exec_hash_2);

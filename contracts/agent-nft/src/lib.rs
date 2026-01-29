@@ -2,8 +2,8 @@
 
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
 use stellai_lib::{
-    errors::ContractError, Agent, ADMIN_KEY, AGENT_COUNTER_KEY,
-    APPROVED_MINTERS_KEY, MAX_CAPABILITIES, MAX_STRING_LENGTH,
+    errors::ContractError, Agent, ADMIN_KEY, AGENT_COUNTER_KEY, APPROVED_MINTERS_KEY,
+    MAX_CAPABILITIES, MAX_STRING_LENGTH,
 };
 
 // ============================================================================
@@ -583,14 +583,21 @@ mod tests {
         let contract_id = env.register_contract(None, AgentNFT);
         let client = AgentNFTClient::new(env, &contract_id);
         let admin = Address::generate(env);
-        
+
         env.mock_all_auths();
         client.init_contract(&admin);
-        
+
         (client, admin)
     }
 
-    fn mint_test_agent(env: &Env, client: &AgentNFTClient, owner: &Address, agent_id: u128, metadata_cid: &str, evolution_level: u32) {
+    fn mint_test_agent(
+        env: &Env,
+        client: &AgentNFTClient,
+        owner: &Address,
+        agent_id: u128,
+        metadata_cid: &str,
+        evolution_level: u32,
+    ) {
         let metadata = String::from_str(env, metadata_cid);
         client.mint_agent(&agent_id, owner, &metadata, &evolution_level);
     }
@@ -599,13 +606,13 @@ mod tests {
     fn test_get_agent_owner() {
         let env = Env::default();
         let (client, admin) = setup_contract(&env);
-        
+
         let owner = Address::generate(&env);
         client.add_approved_minter(&admin, &owner);
-        
+
         env.mock_all_auths();
         mint_test_agent(&env, &client, &owner, 1, "QmTestCID123", 1);
-        
+
         // Test get_agent_owner returns correct owner
         let result = client.get_agent_owner(&1);
         assert_eq!(result, owner);
@@ -615,14 +622,14 @@ mod tests {
     fn test_get_agent_metadata() {
         let env = Env::default();
         let (client, admin) = setup_contract(&env);
-        
+
         let owner = Address::generate(&env);
         client.add_approved_minter(&admin, &owner);
-        
+
         let metadata_cid = "QmTestMetadataCID456";
         env.mock_all_auths();
         mint_test_agent(&env, &client, &owner, 2, metadata_cid, 5);
-        
+
         // Test get_agent_metadata returns correct CID
         let result = client.get_agent_metadata(&2);
         assert_eq!(result, String::from_str(&env, metadata_cid));
@@ -632,14 +639,14 @@ mod tests {
     fn test_get_agent_evolution_level() {
         let env = Env::default();
         let (client, admin) = setup_contract(&env);
-        
+
         let owner = Address::generate(&env);
         client.add_approved_minter(&admin, &owner);
-        
+
         let evolution_level = 7u32;
         env.mock_all_auths();
         mint_test_agent(&env, &client, &owner, 3, "QmEvolutionTest", evolution_level);
-        
+
         // Test get_agent_evolution_level returns correct level
         let result = client.get_agent_evolution_level(&3);
         assert_eq!(result, evolution_level);
@@ -649,14 +656,14 @@ mod tests {
     fn test_query_non_existent_agent() {
         let env = Env::default();
         let (client, _admin) = setup_contract(&env);
-        
+
         // Try to query a non-existent agent - should return AgentNotFound
         let result = client.try_get_agent_owner(&999);
         assert!(result.is_err());
-        
+
         let result = client.try_get_agent_metadata(&999);
         assert!(result.is_err());
-        
+
         let result = client.try_get_agent_evolution_level(&999);
         assert!(result.is_err());
     }
@@ -665,14 +672,14 @@ mod tests {
     fn test_query_zero_agent_id() {
         let env = Env::default();
         let (client, _admin) = setup_contract(&env);
-        
+
         // Query with agent_id = 0 should return InvalidAgentId
         let result = client.try_get_agent_owner(&0);
         assert!(result.is_err());
-        
+
         let result = client.try_get_agent_metadata(&0);
         assert!(result.is_err());
-        
+
         let result = client.try_get_agent_evolution_level(&0);
         assert!(result.is_err());
     }
@@ -681,29 +688,28 @@ mod tests {
     fn test_query_functions_no_state_mutation() {
         let env = Env::default();
         let (client, admin) = setup_contract(&env);
-        
+
         let owner = Address::generate(&env);
         client.add_approved_minter(&admin, &owner);
-        
+
         env.mock_all_auths();
         mint_test_agent(&env, &client, &owner, 4, "QmImmutableTest", 3);
-        
+
         // Get initial state
         let initial_owner = client.get_agent_owner(&4);
         let initial_metadata = client.get_agent_metadata(&4);
         let initial_level = client.get_agent_evolution_level(&4);
-        
+
         // Call query functions multiple times
         for _ in 0..5 {
             client.get_agent_owner(&4);
             client.get_agent_metadata(&4);
             client.get_agent_evolution_level(&4);
         }
-        
+
         // Verify state remains unchanged
         assert_eq!(client.get_agent_owner(&4), initial_owner);
         assert_eq!(client.get_agent_metadata(&4), initial_metadata);
         assert_eq!(client.get_agent_evolution_level(&4), initial_level);
     }
 }
-
