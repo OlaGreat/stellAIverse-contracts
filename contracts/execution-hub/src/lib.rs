@@ -8,13 +8,22 @@ use stellai_lib::{
     MAX_DATA_SIZE, MAX_HISTORY_QUERY_LIMIT, MAX_HISTORY_SIZE, MAX_STRING_LENGTH,
 };
 
-// Data structures
 #[derive(Clone)]
 #[contracttype]
 pub struct RuleKey {
     pub agent_id: u64,
     pub rule_name: String,
 }
+
+#[derive(Clone)]
+#[contracttype]
+pub struct OperatorData {
+    pub operator: Address,
+    pub expires_at: u64,
+}
+
+const AGENT_NFT_KEY: &str = "agent_nft";
+
 
 #[derive(Clone)]
 #[contracttype]
@@ -55,17 +64,18 @@ pub struct ExecutionHub;
 
 #[contractimpl]
 impl ExecutionHub {
-    // Initialize contract with admin
-    pub fn initialize(env: Env, admin: Address) {
+    // Initialize contract with admin and AgentNFT address
+    pub fn initialize(env: Env, admin: Address, agent_nft: Address) {
         if env.storage().instance().has(&ADMIN_KEY) {
             panic!("Contract already initialized");
         }
 
         admin.require_auth();
         env.storage().instance().set(&ADMIN_KEY, &admin);
+        env.storage().instance().set(&Symbol::new(&env, AGENT_NFT_KEY), &agent_nft);
         env.storage().instance().set(&EXEC_CTR_KEY, &0u64);
 
-        env.events().publish((symbol_short!("init"),), admin);
+        env.events().publish((symbol_short!("init"),), (admin, agent_nft));
     }
 
     // Get current execution counter
@@ -123,6 +133,60 @@ impl ExecutionHub {
             .publish((symbol_short!("rule_rev"),), (agent_id, rule_name, owner));
     }
 
+    // Authorize an operator (lessee) for an agent
+    pub fn authorize_operator(
+        env: Env,
+        agent_id: u64,
+        owner: Address,
+        operator: Address,
+        duration_seconds: u64,
+    ) {
+        owner.require_auth();
+        Self::validate_agent_id(agent_id);
+
+        // Verify owner via AgentNFT
+        let actual_owner = Self::get_agent_owner(&env, agent_id);
+        if owner != actual_owner {
+             panic!("Unauthorized: caller is not agent owner");
+        }
+
+        let expires_at = env.ledger().timestamp() + duration_seconds;
+        let operator_data = OperatorData {
+            operator: operator.clone(),
+            expires_at,
+        };
+
+        let op_key = symbol_short!("op");
+        let agent_op_key = (op_key, agent_id);
+        env.storage().instance().set(&agent_op_key, &operator_data);
+
+        env.events().publish(
+            (symbol_short!("auth_op"),),
+            (agent_id, owner, operator, expires_at),
+        );
+    }
+
+    // Revoke an operator
+    pub fn revoke_operator(env: Env, agent_id: u64, owner: Address) {
+        owner.require_auth();
+        Self::validate_agent_id(agent_id);
+
+        // Verify owner via AgentNFT
+        let actual_owner = Self::get_agent_owner(&env, agent_id);
+        if owner != actual_owner {
+             panic!("Unauthorized: caller is not agent owner");
+        }
+
+        let op_key = symbol_short!("op");
+        let agent_op_key = (op_key, agent_id);
+        env.storage().instance().remove(&agent_op_key);
+
+        env.events().publish(
+            (symbol_short!("rev_op"),),
+            (agent_id, owner),
+        );
+    }
+
     // Get rule data
     pub fn get_rule(env: Env, agent_id: u64, rule_name: String) -> Option<Bytes> {
         Self::validate_agent_id(agent_id);
@@ -157,6 +221,27 @@ impl ExecutionHub {
         executor.require_auth();
 
         Self::validate_agent_id(agent_id);
+        
+        // Permission Check: Owner or Authorized Operator
+        // 1. Check if executor is owner
+        let owner = Self::get_agent_owner(&env, agent_id);
+        let is_owner = executor == owner;
+
+        // 2. If not owner, check if authorized operator
+        if !is_owner {
+            let op_key = symbol_short!("op");
+            let agent_op_key = (op_key, agent_id);
+            if let Some(op_data) = env.storage().instance().get::<_, OperatorData>(&agent_op_key) {
+                if op_data.operator != executor {
+                    panic!("Unauthorized: executor is not owner or operator");
+                }
+                if env.ledger().timestamp() > op_data.expires_at {
+                    panic!("Unauthorized: operator authorization expired");
+                }
+            } else {
+                 panic!("Unauthorized: executor is not owner or operator");
+            }
+        }
         Self::validate_string_length(&action, "Action name");
         Self::validate_data_size(&parameters, "Parameters");
         Self::validate_data_size(&execution_hash, "Execution hash");
@@ -482,6 +567,22 @@ impl ExecutionHub {
             .instance()
             .set(&agent_limit_key, &new_rate_data);
     }
+
+    // Helper: Get agent owner from AgentNFT contract
+    fn get_agent_owner(env: &Env, agent_id: u64) -> Address {
+        let agent_nft_addr: Address = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(env, AGENT_NFT_KEY))
+            .expect("AgentNFT contract not set");
+        
+        // Call AgentNFT.get_agent_owner(agent_id)
+        env.invoke_contract(
+            &agent_nft_addr,
+            &Symbol::new(env, "get_agent_owner"),
+            Vec::from_array(env, [agent_id.into_val(env)]),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -489,46 +590,63 @@ mod test {
     use super::*;
     use soroban_sdk::{testutils::Address as _, Env};
 
-    #[test]
-    fn test_initialization() {
+    // Mock AgentNFT contract for testing cross-contract calls
+    #[contract]
+    pub struct MockAgentNFT;
+
+    #[contractimpl]
+    impl MockAgentNFT {
+        pub fn get_agent_owner(env: Env, agent_id: u64) -> Address {
+            env.storage().instance().get(&agent_id).expect("Agent not found in mock")
+        }
+        
+        pub fn set_owner(env: Env, agent_id: u64, owner: Address) {
+            env.storage().instance().set(&agent_id, &owner);
+        }
+    }
+
+    fn setup_test() -> (Env, ExecutionHubClient<'static>, Address, MockAgentNFTClient<'static>, Address) {
         let env = Env::default();
+        env.mock_all_auths();
+
         let contract_id = env.register_contract(None, ExecutionHub);
         let client = ExecutionHubClient::new(&env, &contract_id);
 
-        let admin = Address::generate(&env);
+        let agent_nft_id = env.register_contract(None, MockAgentNFT);
+        let agent_nft_client = MockAgentNFTClient::new(&env, &agent_nft_id);
 
-        env.mock_all_auths();
-        client.initialize(&admin);
+        let admin = Address::generate(&env);
+        
+        // Initialize with agent nft address
+        client.initialize(&admin, &agent_nft_id);
+
+        (env, client, admin, agent_nft_client, agent_nft_id)
+    }
+
+    #[test]
+    fn test_initialization() {
+        let (env, client, admin, _, agent_nft_id) = setup_test();
 
         assert_eq!(client.get_admin(), admin);
         assert_eq!(client.get_execution_counter(), 0);
+        
+        // Check if agent nft address is stored correctly is implicit via get_agent_owner working later
     }
 
     #[test]
     #[should_panic(expected = "Contract already initialized")]
     fn test_double_initialization() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.initialize(&admin);
-        client.initialize(&admin);
+        let (env, client, admin, _, agent_nft_id) = setup_test();
+        client.initialize(&admin, &agent_nft_id);
     }
 
     #[test]
     fn test_execution_counter_increment() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
+        let (env, client, _admin, agent_nft, _) = setup_test();
         let executor = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.initialize(&admin);
+        
+        // Set executor as owner of agent 1
+        agent_nft.set_owner(&1, &executor);
 
         let action = String::from_str(&env, "test_action");
         let params = Bytes::from_array(&env, &[1, 2, 3]);
@@ -545,16 +663,112 @@ mod test {
     }
 
     #[test]
-    fn test_register_and_get_rule() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
+    fn test_permission_checks() {
+        let (env, client, _admin, agent_nft, _) = setup_test();
         let owner = Address::generate(&env);
+        let other = Address::generate(&env);
+        
+        // Set owner for agent 1
+        agent_nft.set_owner(&1, &owner);
 
-        env.mock_all_auths();
-        client.initialize(&admin);
+        let action = String::from_str(&env, "test");
+        let params = Bytes::from_array(&env, &[1]);
+        let exec_hash = Bytes::from_array(&env, &[0xaa]);
+
+        // 1. Owner can execute
+        client.execute_action(&1, &owner, &action, &params, &1, &exec_hash);
+
+        // 2. Non-owner cannot execute
+        // We expect panic here. Since we can't easily catch panic in the middle of a test without helper,
+        // we'll rely on separate tests or use verify_executed pattern if available. 
+        // For now, let's just test success cases and create a separate test for failure.
+    }
+    
+    #[test]
+    #[should_panic(expected = "Unauthorized: executor is not owner or operator")]
+    fn test_unauthorized_execution() {
+        let (env, client, _admin, agent_nft, _) = setup_test();
+        let owner = Address::generate(&env);
+        let other = Address::generate(&env);
+        
+        agent_nft.set_owner(&1, &owner);
+        
+        let action = String::from_str(&env, "test");
+        let params = Bytes::from_array(&env, &[1]);
+        let exec_hash = Bytes::from_array(&env, &[0xaa]);
+
+        // Other tries to execute
+        client.execute_action(&1, &other, &action, &params, &1, &exec_hash);
+    }
+
+    #[test]
+    fn test_operator_delegation() {
+        let (env, client, _admin, agent_nft, _) = setup_test();
+        let owner = Address::generate(&env);
+        let operator = Address::generate(&env);
+        
+        agent_nft.set_owner(&1, &owner);
+        
+        // Authorize operator for 100 seconds
+        client.authorize_operator(&1, &owner, &operator, &100);
+
+        let action = String::from_str(&env, "test");
+        let params = Bytes::from_array(&env, &[1]);
+        let exec_hash = Bytes::from_array(&env, &[0xaa]);
+
+        // Operator executes
+        client.execute_action(&1, &operator, &action, &params, &1, &exec_hash);
+        
+        // Revoke
+        client.revoke_operator(&1, &owner);
+        
+        // Should fail now (need separate test for panic)
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized: executor is not owner or operator")]
+    fn test_revoked_operator() {
+        let (env, client, _admin, agent_nft, _) = setup_test();
+        let owner = Address::generate(&env);
+        let operator = Address::generate(&env);
+        
+        agent_nft.set_owner(&1, &owner);
+        client.authorize_operator(&1, &owner, &operator, &100);
+        client.revoke_operator(&1, &owner);
+
+        let action = String::from_str(&env, "test");
+        let params = Bytes::from_array(&env, &[1]);
+        let exec_hash = Bytes::from_array(&env, &[0xaa]);
+
+        client.execute_action(&1, &operator, &action, &params, &1, &exec_hash);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized: operator authorization expired")]
+    fn test_expired_operator() {
+        let (env, client, _admin, agent_nft, _) = setup_test();
+        let owner = Address::generate(&env);
+        let operator = Address::generate(&env);
+        
+        agent_nft.set_owner(&1, &owner);
+        
+        // Authorize for 10 seconds
+        client.authorize_operator(&1, &owner, &operator, &10);
+        
+        // Advance time by 20 seconds
+        env.ledger().set_timestamp(env.ledger().timestamp() + 20);
+
+        let action = String::from_str(&env, "test");
+        let params = Bytes::from_array(&env, &[1]);
+        let exec_hash = Bytes::from_array(&env, &[0xaa]);
+
+        client.execute_action(&1, &operator, &action, &params, &1, &exec_hash);
+    }
+
+    #[test]
+    fn test_register_and_get_rule() {
+        let (env, client, _admin, _, _) = setup_test();
+        let owner = Address::generate(&env);
 
         let rule_name = String::from_str(&env, "my_rule");
         let rule_data = Bytes::from_array(&env, &[10, 20, 30]);
@@ -569,15 +783,9 @@ mod test {
     #[test]
     #[should_panic(expected = "Invalid nonce")]
     fn test_replay_protection() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
+        let (env, client, _admin, agent_nft, _) = setup_test();
         let executor = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.initialize(&admin);
+        agent_nft.set_owner(&1, &executor);
 
         let action = String::from_str(&env, "test");
         let params = Bytes::from_array(&env, &[1]);
@@ -589,15 +797,9 @@ mod test {
 
     #[test]
     fn test_get_history() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
+        let (env, client, _admin, agent_nft, _) = setup_test();
         let executor = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.initialize(&admin);
+        agent_nft.set_owner(&1, &executor);
 
         let action = String::from_str(&env, "test_action");
         let params = Bytes::from_array(&env, &[1]);
@@ -614,15 +816,8 @@ mod test {
 
     #[test]
     fn test_admin_transfer() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin1 = Address::generate(&env);
+        let (env, client, admin1, _, _) = setup_test();
         let admin2 = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.initialize(&admin1);
 
         client.transfer_admin(&admin1, &admin2);
         assert_eq!(client.get_admin(), admin2);
@@ -630,15 +825,9 @@ mod test {
 
     #[test]
     fn test_rate_limiting() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
+        let (env, client, _admin, agent_nft, _) = setup_test();
         let executor = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.initialize(&admin);
+        agent_nft.set_owner(&1, &executor);
 
         let action = String::from_str(&env, "test");
         let params = Bytes::from_array(&env, &[1]);
@@ -656,15 +845,9 @@ mod test {
     // Issue #10: Tests for execution receipt functionality
     #[test]
     fn test_execution_receipt_storage() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
+        let (env, client, _admin, agent_nft, _) = setup_test();
         let executor = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.initialize(&admin);
+        agent_nft.set_owner(&1, &executor);
 
         let action = String::from_str(&env, "transfer");
         let params = Bytes::from_array(&env, &[1, 2, 3]);
@@ -686,15 +869,9 @@ mod test {
 
     #[test]
     fn test_get_agent_for_execution() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
+        let (env, client, _admin, agent_nft, _) = setup_test();
         let executor = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.initialize(&admin);
+        agent_nft.set_owner(&42, &executor);
 
         let action = String::from_str(&env, "action");
         let params = Bytes::from_array(&env, &[1]);
@@ -710,15 +887,9 @@ mod test {
 
     #[test]
     fn test_get_agent_receipts() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
+        let (env, client, _admin, agent_nft, _) = setup_test();
         let executor = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.initialize(&admin);
+        agent_nft.set_owner(&1, &executor);
 
         let action = String::from_str(&env, "batch_action");
         let params = Bytes::from_array(&env, &[1]);
@@ -736,15 +907,9 @@ mod test {
 
     #[test]
     fn test_receipt_immutability() {
-        let env = Env::default();
-        let contract_id = env.register_contract(None, ExecutionHub);
-        let client = ExecutionHubClient::new(&env, &contract_id);
-
-        let admin = Address::generate(&env);
+        let (env, client, _admin, agent_nft, _) = setup_test();
         let executor = Address::generate(&env);
-
-        env.mock_all_auths();
-        client.initialize(&admin);
+        agent_nft.set_owner(&1, &executor);
 
         let action = String::from_str(&env, "immutable_test");
         let params = Bytes::from_array(&env, &[1]);
