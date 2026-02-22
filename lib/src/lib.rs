@@ -95,8 +95,60 @@ pub struct RoyaltyInfo {
 }
 
 /// Oracle attestation for evolution completion (signed by oracle provider)
+#[contracttype]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum AuctionType {
+    English = 0,
+    Dutch = 1,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[contracttype]
+#[repr(u32)]
+pub enum AuctionStatus {
+    Created = 0,
+    Active = 1,
+    Ended = 2,
+    Cancelled = 3,
+    Won = 4,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[contracttype]
+#[repr(u32)]
+pub enum PriceDecay {
+    Linear = 0,
+    Exponential = 1,
+}
+
 #[derive(Clone)]
 #[contracttype]
+pub struct DutchAuctionConfig {
+    pub start_price: i128,
+    pub end_price: i128,
+    pub duration_seconds: u64,
+    pub price_decay: PriceDecay,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct Auction {
+    pub auction_id: u64,
+    pub agent_id: u64,
+    pub seller: Address,
+    pub auction_type: AuctionType,
+    pub start_price: i128,
+    pub reserve_price: i128,
+    pub highest_bidder: Option<Address>,
+    pub highest_bid: i128,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub min_bid_increment_bps: u32,
+    pub status: AuctionStatus,
+    pub dutch_config: Option<DutchAuctionConfig>,
+}
+
 pub struct EvolutionAttestation {
     pub request_id: u64,
     pub agent_id: u64,
