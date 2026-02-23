@@ -5,6 +5,7 @@ mod evolution_history;
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec};
 use stellai_lib::{
     EvolutionRequest, EvolutionStatus, EvolutionRecord, ADMIN_KEY, REQUEST_COUNTER_KEY,
+    audit::{create_audit_log, OperationType},
 };
 use evolution_history::{
     append_evolution, get_evolution_history, get_evolution_count, get_evolution_at_index,
@@ -72,7 +73,23 @@ impl Evolution {
 
         env.events().publish(
             (Symbol::new(&env, "request_created"),),
-            (request_id, agent_id, owner, stake_amount),
+            (request_id, agent_id, owner.clone(), stake_amount),
+        );
+
+        // Audit log for evolution request creation
+        let before_state = soroban_sdk::String::from_str(&env, "{}");
+        let after_state = soroban_sdk::String::from_str(&env, "{\"request_created\":true}");
+        let tx_hash = soroban_sdk::String::from_str(&env, "create_request");
+        let description = Some(soroban_sdk::String::from_str(&env, "Evolution request created"));
+        
+        let _ = create_audit_log(
+            &env,
+            owner,
+            OperationType::ConfigurationChange,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
 
         request_id
@@ -131,6 +148,22 @@ impl Evolution {
         env.events().publish(
             (Symbol::new(&env, "evolution_executed"),),
             (request_id, request.agent_id, to_stage),
+        );
+
+        // 7. Audit log for evolution execution
+        let before_state = soroban_sdk::String::from_str(&env, "{\"status\":\"pending\"}");
+        let after_state = soroban_sdk::String::from_str(&env, "{\"status\":\"completed\"}");
+        let tx_hash = soroban_sdk::String::from_str(&env, "execute_evolution");
+        let description = Some(soroban_sdk::String::from_str(&env, "Evolution executed"));
+        
+        let _ = create_audit_log(
+            &env,
+            admin,
+            OperationType::AdminSettingsChange,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
     }
 

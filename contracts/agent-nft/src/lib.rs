@@ -605,7 +605,23 @@ impl AgentNFT {
 
         env.events().publish(
             (Symbol::new(&env, "agent_nft"), AgentEvent::AgentTransferred),
-            (agent_id, previous_owner, to.clone()),
+            (agent_id, previous_owner.clone(), to.clone()),
+        );
+
+        // Audit log for transfer
+        let before_state = String::from_str(&env, "{\"transferred\":false}");
+        let after_state = String::from_str(&env, "{\"transferred\":true}");
+        let tx_hash = String::from_str(&env, "transfer_agent");
+        let description = Some(String::from_str(&env, "Agent NFT transferred"));
+        
+        let _ = create_audit_log(
+            &env,
+            from,
+            OperationType::AdminTransfer,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
 
         Ok(())

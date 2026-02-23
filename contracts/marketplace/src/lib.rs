@@ -839,7 +839,23 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "BidPlaced"),),
-            (auction_id, bidder, amount, auction.end_time)
+            (auction_id, bidder.clone(), amount, auction.end_time)
+        );
+
+        // Audit log for bid placement
+        let before_state = String::from_str(&env, "{\"bid_placed\":false}");
+        let after_state = String::from_str(&env, "{\"bid_placed\":true}");
+        let tx_hash = String::from_str(&env, "place_bid");
+        let description = Some(String::from_str(&env, "Auction bid placed"));
+        
+        let _ = create_audit_log(
+            &env,
+            bidder,
+            OperationType::AuctionBidPlaced,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
     }
 
