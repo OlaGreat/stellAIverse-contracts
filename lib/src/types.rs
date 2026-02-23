@@ -51,3 +51,9 @@ pub enum EvolutionStatus {
     Completed,
     Failed,
 }
+
+pub trait Migration {
+    /// Transforms storage from the previous version to the current version.
+    /// This should be called exactly once after an upgrade.
+    fn migrate(env: soroban_sdk::Env) -> Result<(), errors::ContractError>;
+}
