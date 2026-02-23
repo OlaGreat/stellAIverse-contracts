@@ -1,42 +1,18 @@
 #![no_std]
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype, Address, Env, String, Symbol, Vec,
-};
-use stellai_lib::{RoyaltyInfo, MAX_ROYALTY_FEE};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
 
-const ADMIN_KEY: &str = "admin";
-const AGENT_COUNTER_KEY: &str = "agent_counter";
-const APPROVED_MINTERS_KEY: &str = "approved_minters";
+// ============================================================================
+// LIBRARY IMPORTS
+// We import the shared types and errors from stellai_lib here.
+// ============================================================================
+use stellai_lib::{
+    errors::ContractError, Agent, RoyaltyInfo, ADMIN_KEY, AGENT_COUNTER_KEY, APPROVED_MINTERS_KEY,
+    MAX_ROYALTY_FEE,
+};
 
 // Maximum lengths for validation
 const MAX_STRING_LENGTH: usize = 256;
 const MAX_CAPABILITIES: usize = 10;
-
-// ============================================================================
-// Contract Error Enum
-// ============================================================================
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
-#[repr(u32)]
-pub enum ContractError {
-    AlreadyInitialized = 1,
-    Unauthorized = 2,
-    DuplicateAgentId = 3,
-    AgentNotFound = 4,
-    InvalidAgentId = 5,
-    InvalidInput = 6,
-    AgentLeased = 7,
-    OverflowError = 8,
-    SameAddressTransfer = 9,
-    NotOwner = 10,
-    InvalidRoyaltyFee = 11,
-}
-
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
-use stellai_lib::{
-    errors::ContractError, Agent, ADMIN_KEY, AGENT_COUNTER_KEY, APPROVED_MINTERS_KEY,
-    MAX_CAPABILITIES, MAX_STRING_LENGTH,
-};
 
 // ============================================================================
 // Event types
@@ -49,11 +25,25 @@ pub enum AgentEvent {
     AgentTransferred,
     LeaseStarted,
     LeaseEnded,
+    BatchMintCompleted,
+}
+
+// ============================================================================
+// Batch Mint Data Structure
+// ============================================================================
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct AgentMintData {
+    pub owner: Address,
+    pub name: String,
+    pub model_hash: String,
+    pub metadata_cid: String,
+    pub capabilities: Vec<String>,
+    pub royalty: Option<RoyaltyInfo>,
 }
 
 #[contract]
 pub struct AgentNFT;
-
 #[contractimpl]
 impl AgentNFT {
     /// Initialize contract with admin (one-time setup)
@@ -251,10 +241,7 @@ impl AgentNFT {
         // Validate and store royalty info if provided
         if let (Some(recipient), Some(fee)) = (royalty_recipient, royalty_fee) {
             Self::validate_royalty_fee(fee)?;
-            let royalty_info = RoyaltyInfo {
-                recipient,
-                fee,
-            };
+            let royalty_info = RoyaltyInfo { recipient, fee };
             let royalty_key = Self::get_royalty_key(&env, agent_id_u64);
             env.storage().instance().set(&royalty_key, &royalty_info);
         } else if royalty_recipient.is_some() || royalty_fee.is_some() {
@@ -387,10 +374,7 @@ impl AgentNFT {
 
         // Store royalty info if provided
         if let (Some(recipient), Some(fee)) = (royalty_recipient, royalty_fee) {
-            let royalty_info = RoyaltyInfo {
-                recipient,
-                fee,
-            };
+            let royalty_info = RoyaltyInfo { recipient, fee };
             let royalty_key = Self::get_royalty_key(&env, agent_id);
             env.storage().instance().set(&royalty_key, &royalty_info);
         }
@@ -564,6 +548,119 @@ impl AgentNFT {
         Ok(())
     }
 
+    pub fn batch_mint(
+        env: Env,
+        admin: Address,
+        agents: Vec<AgentMintData>,
+    ) -> Result<Vec<u64>, ContractError> {
+        // 1. Authorization: Only admin or approved minters
+        admin.require_auth();
+        Self::verify_minter(&env, &admin)?;
+
+        // 2. Batch Size Validation
+        let count = agents.len();
+        if count == 0 {
+            return Err(ContractError::InvalidInput);
+        }
+        if count > 50 {
+            return Err(ContractError::InvalidInput);
+        } // Limit to 50
+
+        // 3. Duplicate Metadata Validation (Internal to Batch)
+        // We use a temporary map to ensure no CID is repeated in this single call
+        let mut seen_cids = Vec::new(&env);
+        for i in 0..agents.len() {
+            let agent = agents.get(i).unwrap();
+            if seen_cids.contains(agent.metadata_cid.clone()) {
+                return Err(ContractError::InvalidInput);
+            }
+            seen_cids.push_back(agent.metadata_cid.clone());
+        }
+
+        // 4. Execution Logic
+        let mut minted_ids = Vec::new(&env);
+        let mut current_counter: u64 = env
+            .storage()
+            .instance()
+            .get(&Symbol::new(&env, AGENT_COUNTER_KEY))
+            .unwrap_or(0);
+
+        for i in 0..agents.len() {
+            let data = agents.get(i).unwrap();
+
+            // Increment ID
+            current_counter = Self::safe_add(current_counter, 1)?;
+            let agent_id = current_counter;
+
+            // Create Agent object
+            let agent = Agent {
+                id: agent_id,
+                owner: data.owner.clone(),
+                name: data.name,
+                model_hash: data.model_hash,
+                metadata_cid: data.metadata_cid,
+                capabilities: data.capabilities,
+                evolution_level: 0,
+                created_at: env.ledger().timestamp(),
+                updated_at: env.ledger().timestamp(),
+                nonce: 0,
+                escrow_locked: false,
+                escrow_holder: None,
+            };
+
+            // Persist Agent
+            let key = Self::get_agent_key(&env, agent_id);
+            env.storage().instance().set(&key, &agent);
+            Self::set_agent_lease_status(&env, agent_id, false);
+
+            // Handle Royalty if present
+            if let Some(royalty) = data.royalty {
+                Self::validate_royalty_fee(royalty.fee)?;
+                let royalty_key = Self::get_royalty_key(&env, agent_id);
+                env.storage().instance().set(&royalty_key, &royalty);
+            }
+
+            // Emit Individual Event
+            env.events().publish(
+                (Symbol::new(&env, "agent_nft"), AgentEvent::AgentMinted),
+                (agent_id, data.owner.clone()),
+            );
+
+            minted_ids.push_back(agent_id);
+        }
+
+        // 5. Update Global Counter
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, AGENT_COUNTER_KEY), &current_counter);
+
+        // 6. Emit Batch Summary Event
+        // We use the timestamp + admin address hash as a pseudo batch_id
+        env.events().publish(
+            (
+                Symbol::new(&env, "agent_nft"),
+                AgentEvent::BatchMintCompleted,
+            ),
+            (count, admin),
+        );
+
+        Ok(minted_ids)
+    }
+
+    fn validate_agent_data(
+        env: &Env,
+        name: &String,
+        metadata_cid: &String,
+        capabilities: &Vec<String>,
+    ) -> Result<(), ContractError> {
+        if name.len() > MAX_STRING_LENGTH as u32
+            || metadata_cid.len() > MAX_STRING_LENGTH as u32
+            || capabilities.len() > MAX_CAPABILITIES as u32
+        {
+            return Err(ContractError::InvalidInput);
+        }
+        Ok(())
+    }
     /// Get current owner of an agent
     /// Read-only query function for off-chain consumers (Issue #6)
     pub fn get_agent_owner(env: Env, agent_id: u64) -> Result<Address, ContractError> {
@@ -718,7 +815,15 @@ mod tests {
         evolution_level: u32,
     ) {
         let metadata = String::from_str(env, metadata_cid);
-        client.mint_agent(&agent_id, owner, &metadata, &evolution_level);
+        // Added 'None' for royalty_recipient and 'None' for royalty_fee
+        client.mint_agent(
+            &agent_id,
+            owner,
+            &metadata,
+            &evolution_level,
+            &None, // royalty_recipient
+            &None, // royalty_fee
+        );
     }
 
     #[test]
