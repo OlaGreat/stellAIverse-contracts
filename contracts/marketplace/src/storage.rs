@@ -1,4 +1,4 @@
-use soroban_sdk::{ Env, Address, contracttype, Symbol, Vec, String };
+use soroban_sdk::{ Env, Address, contracttype, Vec, String };
 
 #[derive(Clone)]
 #[contracttype]
@@ -12,6 +12,13 @@ pub enum DataKey {
     ApprovalCounter,
     Approval(u64),
     ApprovalHistory(u64, u64), // (approval_id, history_index)
+    FeeAdjustmentParams,
+    CurrentFeeStructure,
+    FeeAdjustmentHistory(u64), // fee_adjustment_id
+    FeeAdjustmentCounter,
+    OracleSubscriptions,
+    LastOracleUpdate,
+    FeeTransitionState,
 }
 
 /* ---------------- ADMIN ---------------- */
@@ -102,7 +109,7 @@ pub fn get_approval_counter(env: &Env) -> u64 {
 }
 
 pub fn set_approval_counter(env: &Env, counter: u64) {
-    env.storage().instance().set(&DataKey::ApprovalCounter, counter);
+    env.storage().instance().set(&DataKey::ApprovalCounter, &counter);
 }
 
 pub fn increment_approval_counter(env: &Env) -> u64 {
@@ -149,4 +156,117 @@ pub fn delete_approval(env: &Env, approval_id: u64) {
         env.storage().instance().remove(&DataKey::ApprovalHistory(approval_id, history_index));
         history_index += 1;
     }
+}
+/* ---------------- DYNAMIC FEE ADJUSTMENT ---------------- */
+
+#[derive(Clone)]
+#[contracttype]
+pub struct FeeAdjustmentParams {
+    pub base_marketplace_fee: u32, // basis points
+    pub congestion_oracle_id: Address,
+    pub utilization_oracle_id: Address,
+    pub volatility_oracle_id: Address,
+    pub min_fee_bps: u32,
+    pub max_fee_bps: u32,
+    pub adjustment_window: u64,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct FeeCalculationInput {
+    pub network_congestion: i128,    // 0-100
+    pub platform_utilization: i128, // 0-100
+    pub market_volatility: i128,     // 0-100
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct FeeStructure {
+    pub marketplace_fee_bps: u32,
+    pub calculated_at: u64,
+    pub congestion_factor: i128,
+    pub utilization_factor: i128,
+    pub volatility_factor: i128,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct FeeAdjustmentHistory {
+    pub adjustment_id: u64,
+    pub timestamp: u64,
+    pub old_fee_bps: u32,
+    pub new_fee_bps: u32,
+    pub congestion_value: i128,
+    pub utilization_value: i128,
+    pub volatility_value: i128,
+    pub adjustment_reason: String,
+}
+
+#[derive(Clone)]
+#[contracttype]
+pub struct FeeTransitionState {
+    pub is_transitioning: bool,
+    pub start_fee_bps: u32,
+    pub target_fee_bps: u32,
+    pub transition_start: u64,
+    pub transition_steps: u32,
+    pub current_step: u32,
+}
+
+pub fn set_fee_adjustment_params(env: &Env, params: &FeeAdjustmentParams) {
+    env.storage().instance().set(&DataKey::FeeAdjustmentParams, params);
+}
+
+pub fn get_fee_adjustment_params(env: &Env) -> Option<FeeAdjustmentParams> {
+    env.storage().instance().get(&DataKey::FeeAdjustmentParams)
+}
+
+pub fn set_current_fee_structure(env: &Env, fee_structure: &FeeStructure) {
+    env.storage().instance().set(&DataKey::CurrentFeeStructure, fee_structure);
+}
+
+pub fn get_current_fee_structure(env: &Env) -> Option<FeeStructure> {
+    env.storage().instance().get(&DataKey::CurrentFeeStructure)
+}
+
+pub fn get_fee_adjustment_counter(env: &Env) -> u64 {
+    env.storage().instance().get(&DataKey::FeeAdjustmentCounter).unwrap_or(0)
+}
+
+pub fn increment_fee_adjustment_counter(env: &Env) -> u64 {
+    let counter = get_fee_adjustment_counter(env) + 1;
+    env.storage().instance().set(&DataKey::FeeAdjustmentCounter, &counter);
+    counter
+}
+
+pub fn add_fee_adjustment_history(env: &Env, history: &FeeAdjustmentHistory) {
+    env.storage().instance().set(&DataKey::FeeAdjustmentHistory(history.adjustment_id), history);
+}
+
+pub fn get_fee_adjustment_history(env: &Env, adjustment_id: u64) -> Option<FeeAdjustmentHistory> {
+    env.storage().instance().get(&DataKey::FeeAdjustmentHistory(adjustment_id))
+}
+
+pub fn set_oracle_subscriptions(env: &Env, oracle_ids: &Vec<Address>) {
+    env.storage().instance().set(&DataKey::OracleSubscriptions, oracle_ids);
+}
+
+pub fn get_oracle_subscriptions(env: &Env) -> Vec<Address> {
+    env.storage().instance().get(&DataKey::OracleSubscriptions).unwrap_or_else(|| Vec::new(env))
+}
+
+pub fn set_last_oracle_update(env: &Env, timestamp: u64) {
+    env.storage().instance().set(&DataKey::LastOracleUpdate, &timestamp);
+}
+
+pub fn get_last_oracle_update(env: &Env) -> u64 {
+    env.storage().instance().get(&DataKey::LastOracleUpdate).unwrap_or(0)
+}
+
+pub fn set_fee_transition_state(env: &Env, state: &FeeTransitionState) {
+    env.storage().instance().set(&DataKey::FeeTransitionState, state);
+}
+
+pub fn get_fee_transition_state(env: &Env) -> Option<FeeTransitionState> {
+    env.storage().instance().get(&DataKey::FeeTransitionState)
 }

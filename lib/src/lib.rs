@@ -122,7 +122,7 @@ pub enum PriceDecay {
     Exponential = 1,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 #[contracttype]
 pub struct DutchAuctionConfig {
     pub start_price: i128,
@@ -146,7 +146,7 @@ pub struct Auction {
     pub end_time: u64,
     pub min_bid_increment_bps: u32,
     pub status: AuctionStatus,
-    pub dutch_config: Option<DutchAuctionConfig>,
+    // pub dutch_config: Option<DutchAuctionConfig>, // Temporarily commented out
 }
 
 /// Multi-signature approval configuration for high-value sales
@@ -160,7 +160,7 @@ pub struct ApprovalConfig {
 }
 
 /// Approval status for high-value transactions
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[contracttype]
 #[repr(u32)]
 pub enum ApprovalStatus {
