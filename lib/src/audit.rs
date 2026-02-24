@@ -225,7 +225,8 @@ pub fn query_audit_logs(
         current_id += 1;
     }
 
-    let has_more = current_id <= actual_end;
+    // has_more is true if we stopped due to limit, not because we reached the end
+    let has_more = count == limit && current_id <= actual_end;
 
     AuditLogQueryResult {
         logs,

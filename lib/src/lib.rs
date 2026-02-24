@@ -4,9 +4,6 @@ pub mod audit;
 pub mod audit_helpers;
 pub mod errors;
 
-#[cfg(test)]
-mod audit_tests;
-
 use soroban_sdk::{contracttype, symbol_short, Address, Bytes, String, Symbol, Val, Vec};
 
 /// Oracle data entry

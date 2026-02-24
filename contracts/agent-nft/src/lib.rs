@@ -880,7 +880,7 @@ mod tests {
     use super::*;
     use soroban_sdk::{testutils::Address as _, Env};
 
-    fn setup_contract(env: &Env) -> (AgentNFTClient, Address) {
+    pub fn setup_contract(env: &Env) -> (AgentNFTClient, Address) {
         let contract_id = env.register_contract(None, AgentNFT);
         let client = AgentNFTClient::new(env, &contract_id);
         let admin = Address::generate(env);
@@ -891,7 +891,7 @@ mod tests {
         (client, admin)
     }
 
-    fn mint_test_agent(
+    pub fn mint_test_agent(
         env: &Env,
         client: &AgentNFTClient,
         owner: &Address,

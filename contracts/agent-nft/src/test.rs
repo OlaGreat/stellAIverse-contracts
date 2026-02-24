@@ -1,8 +1,9 @@
 #[cfg(test)]
 mod prop_tests {
     use super::*;
+    use crate::{AgentNFT, AgentNFTClient, ContractError};
     use proptest::prelude::*;
-    use soroban_sdk::{testutils::Address as _, Env, String, Vec};
+    use soroban_sdk::{testutils::Address as _, Address, Env, String, Vec};
 
     // --- Strategy Helpers ---
     // Generates a random valid royalty fee (0 to 10,000)
@@ -89,7 +90,7 @@ mod prop_tests {
 
             let owner = Address::generate(&env);
             let stranger = Address::generate(&env);
-            client.add_approved_minter(&admin, &owner);
+            let _ = client.add_approved_minter(&admin, &owner);
 
             mint_test_agent(&env, &client, &owner, id as u128, "cid", 1);
 
