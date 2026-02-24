@@ -11,7 +11,7 @@ crate-type = ["cdylib"]
 [dependencies]
 soroban-sdk = "21.0.0"
 stellai_lib = { path = "../../lib" }
-shared = { path = "../../shared", features = ["testutils"] }
+shared = { path = "../../shared" }
 
 
 [dev-dependencies]

@@ -2,13 +2,12 @@
 
 extern crate alloc;
 
+#[cfg(test)]
 mod tests;
+#[cfg(any(test, feature = "testutils"))]
 mod testutils;
 
-use alloc::vec::Vec as StdVec;
-use core::convert::TryInto;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, Symbol, Val, Vec};
-use soroban_sdk::xdr::{self, Limited, Limits, WriteXdr};
+use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, IntoVal, Symbol, Val, Vec};
 use stellai_lib::{OracleData, ADMIN_KEY, PROVIDER_LIST_KEY};
 
 #[contracttype]
@@ -234,12 +233,12 @@ impl Oracle {
             .set(&DataKey::OracleNonce(oracle_pubkey.clone()), &nonce);
     }
 
-    fn build_relay_message(env: &Env, req: RelayRequest) -> Bytes {
-        let scval: xdr::ScVal = req.try_into().unwrap();
-        let mut buf: StdVec<u8> = StdVec::new();
-        scval.write_xdr(&mut Limited::new(&mut buf, Limits::none()))
-            .unwrap();
-        Bytes::from_slice(env, &buf)
+    fn build_relay_message(env: &Env, req: &RelayRequest) -> Bytes {
+        // Hash of deterministic Val encoding (works on wasm guest; signer hashes same Val).
+        let val = req.clone().into_val(env);
+        let serialized = env.serialize_to_bytes(val);
+        let hash = env.crypto().sha256(&serialized);
+        Bytes::from_slice(env, hash.as_slice())
     }
 
     pub fn relay_signed(
@@ -275,7 +274,7 @@ impl Oracle {
             deadline,
         };
 
-        let message = Self::build_relay_message(&env, req);
+        let message = Self::build_relay_message(&env, &req);
         env.crypto()
             .ed25519_verify(&oracle_pubkey, &message, &signature);
 

@@ -1,4 +1,23 @@
 #![no_std]
+
+use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec};
+use stellai_lib::{
+    ADMIN_KEY,
+    REQUEST_COUNTER_KEY,
+    EvolutionRequest,
+    EvolutionStatus,
+};
+
+mod evolution_history;
+use evolution_history::{
+    append_evolution,
+    get_evolution_at_index,
+    get_evolution_count,
+    get_evolution_history,
+    get_latest_evolution,
+    EvolutionRecord,
+};
+
 #[contract]
 pub struct Evolution;
 

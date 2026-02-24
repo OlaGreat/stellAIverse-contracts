@@ -122,13 +122,14 @@ pub enum PriceDecay {
     Exponential = 1,
 }
 
+/// Dutch auction parameters. Used only as an argument type; stored flat on Auction.
+/// Not #[contracttype] to avoid ScVal derivation issues when nested in Option.
 #[derive(Clone)]
-#[contracttype]
 pub struct DutchAuctionConfig {
     pub start_price: i128,
     pub end_price: i128,
     pub duration_seconds: u64,
-    pub price_decay: PriceDecay,
+    pub price_decay: u32, // 0 = Linear, 1 = Exponential
 }
 
 #[derive(Clone)]
@@ -146,7 +147,11 @@ pub struct Auction {
     pub end_time: u64,
     pub min_bid_increment_bps: u32,
     pub status: AuctionStatus,
-    pub dutch_config: Option<DutchAuctionConfig>,
+    /// Dutch auction only; when Some, all four are set.
+    pub dutch_start_price: Option<i128>,
+    pub dutch_end_price: Option<i128>,
+    pub dutch_duration_seconds: Option<u64>,
+    pub dutch_price_decay: Option<u32>,
 }
 
 /// Multi-signature approval configuration for high-value sales
@@ -260,3 +265,72 @@ pub const DEFAULT_APPROVAL_THRESHOLD: i128 = 10_000_000_000; // 10,000 USDC in s
 pub const DEFAULT_APPROVERS_REQUIRED: u32 = 2; // N of M
 pub const DEFAULT_TOTAL_APPROVERS: u32 = 3; // Total authorized approvers
 pub const DEFAULT_APPROVAL_TTL_SECONDS: u64 = 604800; // 7 days
+
+// ---------------------------------------------------------------------------
+// Lease lifecycle (marketplace)
+// ---------------------------------------------------------------------------
+
+/// State of a lease in its lifecycle.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[contracttype]
+#[repr(u32)]
+pub enum LeaseState {
+    Active = 0,
+    ExtensionRequested = 1,
+    Terminated = 2,
+    Renewed = 3,
+}
+
+/// Full lease record: duration, renewal terms, termination conditions, deposit.
+#[derive(Clone)]
+#[contracttype]
+pub struct LeaseData {
+    pub lease_id: u64,
+    pub agent_id: u64,
+    pub listing_id: u64,
+    pub lessor: Address,
+    pub lessee: Address,
+    pub start_time: u64,
+    pub end_time: u64,
+    /// Duration in seconds.
+    pub duration_seconds: u64,
+    /// Deposit amount (e.g. 10% of lease value).
+    pub deposit_amount: i128,
+    /// Total value paid for the lease (e.g. price * duration factor).
+    pub total_value: i128,
+    /// Whether automatic renewal is configured (requires lessee consent when triggered).
+    pub auto_renew: bool,
+    /// Lessee has agreed to automatic renewal for the next term.
+    pub lessee_consent_for_renewal: bool,
+    pub status: LeaseState,
+    /// If status == ExtensionRequested, the pending extension id.
+    pub pending_extension_id: Option<u64>,
+}
+
+/// A request to extend an active lease by additional duration.
+#[derive(Clone)]
+#[contracttype]
+pub struct LeaseExtensionRequest {
+    pub extension_id: u64,
+    pub lease_id: u64,
+    pub additional_duration_seconds: u64,
+    pub requested_at: u64,
+    /// Pending until lessor approves.
+    pub approved: bool,
+}
+
+/// Single entry in lease history (for lessee/lessor audit).
+#[derive(Clone)]
+#[contracttype]
+pub struct LeaseHistoryEntry {
+    pub lease_id: u64,
+    pub action: String,
+    pub actor: Address,
+    pub timestamp: u64,
+    pub details: Option<String>,
+}
+
+// Lease config: basis points (bps). 1000 bps = 10%.
+pub const DEFAULT_LEASE_DEPOSIT_BPS: u32 = 1000; // 10% of lease value
+pub const DEFAULT_EARLY_TERMINATION_PENALTY_BPS: u32 = 2000; // 20% of remaining value
+pub const LEASE_EXTENSION_REQUEST_TTL_SECONDS: u64 = 604_800; // 7 days
