@@ -7,14 +7,13 @@ mod test;
 // We import the shared types and errors from stellai_lib here.
 // ============================================================================
 use stellai_lib::{
+    admin,
     audit::{create_audit_log, OperationType},
     errors::ContractError,
-    Agent, RoyaltyInfo, ADMIN_KEY, AGENT_COUNTER_KEY, APPROVED_MINTERS_KEY, MAX_ROYALTY_FEE,
+    storage_keys::{AGENT_COUNTER_KEY, APPROVED_MINTERS_KEY},
+    types::{Agent, RoyaltyInfo},
+    validation, ADMIN_KEY, MAX_ROYALTY_FEE,
 };
-
-// Maximum lengths for validation
-const MAX_STRING_LENGTH: usize = 256;
-const MAX_CAPABILITIES: usize = 10;
 
 // ============================================================================
 // Event types
@@ -124,13 +123,7 @@ impl AgentNFT {
 
     /// Verify caller is admin
     fn verify_admin(env: &Env, caller: &Address) -> Result<(), ContractError> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&Symbol::new(env, ADMIN_KEY))
-            .ok_or(ContractError::Unauthorized)?;
-
-        if caller != &admin {
+        if admin::verify_admin(env, caller).is_err() {
             // Log the authorization failure
             let before_state = String::from_str(&env, "{}");
             let after_state = String::from_str(&env, "{}");
@@ -266,9 +259,7 @@ impl AgentNFT {
         }
 
         // Input validation
-        if metadata_cid.len() > MAX_STRING_LENGTH.try_into().unwrap() {
-            return Err(ContractError::InvalidInput);
-        }
+        validation::validate_metadata(&metadata_cid)?;
 
         // Validate and store royalty info if provided
         if let (Some(recipient), Some(fee)) = (&royalty_recipient, royalty_fee) {
@@ -364,24 +355,9 @@ impl AgentNFT {
         Self::verify_minter(&env, &owner)?;
 
         // Input validation
-        if name.len() > MAX_STRING_LENGTH.try_into().unwrap() {
-            return Err(ContractError::InvalidInput);
-        }
-        if model_hash.len() > MAX_STRING_LENGTH.try_into().unwrap() {
-            return Err(ContractError::InvalidInput);
-        }
-        if capabilities.len() > MAX_CAPABILITIES.try_into().unwrap() {
-            return Err(ContractError::InvalidInput);
-        }
-
-        // Validate each capability string
-        for i in 0..capabilities.len() {
-            if let Some(cap) = capabilities.get(i) {
-                if cap.len() > MAX_STRING_LENGTH.try_into().unwrap() {
-                    return Err(ContractError::InvalidInput);
-                }
-            }
-        }
+        validation::validate_metadata(&name)?;
+        validation::validate_metadata(&model_hash)?;
+        validation::validate_capabilities(&capabilities)?;
 
         // Validate and store royalty info if provided
         if let (Some(recipient), Some(fee)) = (&royalty_recipient, royalty_fee) {
@@ -508,23 +484,12 @@ impl AgentNFT {
 
         // Update fields with validation
         if let Some(new_name) = name {
-            if new_name.len() > MAX_STRING_LENGTH.try_into().unwrap() {
-                return Err(ContractError::InvalidInput);
-            }
+            validation::validate_metadata(&new_name)?;
             agent.name = new_name;
         }
 
         if let Some(new_capabilities) = capabilities {
-            if new_capabilities.len() > MAX_CAPABILITIES.try_into().unwrap() {
-                return Err(ContractError::InvalidInput);
-            }
-            for i in 0..new_capabilities.len() {
-                if let Some(cap) = new_capabilities.get(i) {
-                    if cap.len() > MAX_STRING_LENGTH.try_into().unwrap() {
-                        return Err(ContractError::InvalidInput);
-                    }
-                }
-            }
+            validation::validate_capabilities(&new_capabilities)?;
             agent.capabilities = new_capabilities;
         }
 
@@ -738,12 +703,9 @@ impl AgentNFT {
         metadata_cid: &String,
         capabilities: &Vec<String>,
     ) -> Result<(), ContractError> {
-        if name.len() > MAX_STRING_LENGTH as u32
-            || metadata_cid.len() > MAX_STRING_LENGTH as u32
-            || capabilities.len() > MAX_CAPABILITIES as u32
-        {
-            return Err(ContractError::InvalidInput);
-        }
+        validation::validate_metadata(name)?;
+        validation::validate_metadata(metadata_cid)?;
+        validation::validate_capabilities(capabilities)?;
         Ok(())
     }
     /// Get current owner of an agent

@@ -15,8 +15,11 @@ use soroban_sdk::{
     contract, contractimpl, Address, Bytes, BytesN, Env, IntoVal, String, Symbol, Val, Vec,
 };
 use stellai_lib::{
+    admin,
     audit::{create_audit_log, OperationType},
-    OracleData, ADMIN_KEY, PROVIDER_LIST_KEY,
+    storage_keys::PROVIDER_LIST_KEY,
+    types::OracleData,
+    ADMIN_KEY,
 };
 
 pub use types::*;
@@ -45,13 +48,7 @@ impl Oracle {
     }
 
     fn verify_admin(env: &Env, caller: &Address) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&Symbol::new(env, ADMIN_KEY))
-            .unwrap_or_else(|| panic!("Contract not initialized"));
-
-        if caller != &admin {
+        if admin::verify_admin(env, caller).is_err() {
             panic!("Caller is not admin");
         }
     }

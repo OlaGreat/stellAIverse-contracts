@@ -2,6 +2,10 @@
 
 StellAIverse — Core Soroban smart contracts in Rust
 
+Legacy Notice
+- `contracts_backup/` is deprecated legacy snapshot code.
+- Use `contracts/` for all active development and deployment.
+
 Purpose
 This repository contains the on-chain logic for StellAIverse: tokenized AI Agents, an execution hub for agent actions, a marketplace, an evolution/upgrades system (staking-driven), oracle integration, and developer tooling & tests for Soroban on Stellar.
 

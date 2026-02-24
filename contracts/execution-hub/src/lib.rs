@@ -1,11 +1,13 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, IntoVal, String,
+    Symbol, Vec,
 };
 use stellai_lib::{
-    ADMIN_KEY, DEFAULT_RATE_LIMIT_OPERATIONS, DEFAULT_RATE_LIMIT_WINDOW_SECONDS, EXEC_CTR_KEY,
-    MAX_DATA_SIZE, MAX_HISTORY_QUERY_LIMIT, MAX_HISTORY_SIZE, MAX_STRING_LENGTH,
+    admin, errors::ContractError, storage_keys::EXEC_CTR_KEY, validation, ADMIN_KEY,
+    DEFAULT_RATE_LIMIT_OPERATIONS, DEFAULT_RATE_LIMIT_WINDOW_SECONDS, MAX_DATA_SIZE,
+    MAX_HISTORY_QUERY_LIMIT, MAX_HISTORY_SIZE, MAX_STRING_LENGTH,
 };
 
 #[derive(Clone)]
@@ -28,7 +30,6 @@ const AGENT_NFT_KEY: &str = "agent_nft";
 const GLOBAL_RATE_LIMIT_KEY: Symbol = symbol_short!("rate_gl");
 const AGENT_RATE_LIMIT_PREFIX: Symbol = symbol_short!("rate_ag");
 const BYPASS_PREFIX: Symbol = symbol_short!("bypass");
-
 
 #[derive(Clone)]
 #[contracttype]
@@ -102,9 +103,12 @@ impl ExecutionHub {
             operations: DEFAULT_RATE_LIMIT_OPERATIONS,
             window_seconds: DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
         };
-        env.storage().instance().set(&GLOBAL_RATE_LIMIT_KEY, &global_rate_limit);
+        env.storage()
+            .instance()
+            .set(&GLOBAL_RATE_LIMIT_KEY, &global_rate_limit);
 
-        env.events().publish((symbol_short!("init"),), (admin, agent_nft));
+        env.events()
+            .publish((symbol_short!("init"),), (admin, agent_nft));
     }
 
     // Get current execution counter
@@ -430,10 +434,7 @@ impl ExecutionHub {
 
     // Get admin address
     pub fn get_admin(env: Env) -> Address {
-        env.storage()
-            .instance()
-            .get(&ADMIN_KEY)
-            .unwrap_or_else(|| panic!("Admin not set"))
+        admin::get_admin(&env).unwrap_or_else(|_| panic!("Admin not set"))
     }
 
     /// Returns the effective rate limit config for an agent (per-agent override or global).
@@ -451,16 +452,22 @@ impl ExecutionHub {
             operations: ops,
             window_seconds: window_secs,
         };
-        env.storage().instance().set(&GLOBAL_RATE_LIMIT_KEY, &config);
+        env.storage()
+            .instance()
+            .set(&GLOBAL_RATE_LIMIT_KEY, &config);
         // agent_id 0 denotes global in events
-        env.events().publish(
-            (symbol_short!("rate_cfg"),),
-            (0u64, ops, window_secs),
-        );
+        env.events()
+            .publish((symbol_short!("rate_cfg"),), (0u64, ops, window_secs));
     }
 
     /// Admin: set per-agent rate limit override (e.g. for trusted oracles or high-frequency agents).
-    pub fn set_agent_rate_limit(env: Env, admin: Address, agent_id: u64, ops: u32, window_secs: u64) {
+    pub fn set_agent_rate_limit(
+        env: Env,
+        admin: Address,
+        agent_id: u64,
+        ops: u32,
+        window_secs: u64,
+    ) {
         admin.require_auth();
         Self::verify_admin(&env, &admin);
         Self::validate_agent_id(agent_id);
@@ -472,10 +479,8 @@ impl ExecutionHub {
         };
         let agent_key = (AGENT_RATE_LIMIT_PREFIX, agent_id);
         env.storage().instance().set(&agent_key, &config);
-        env.events().publish(
-            (symbol_short!("rate_cfg"),),
-            (agent_id, ops, window_secs),
-        );
+        env.events()
+            .publish((symbol_short!("rate_cfg"),), (agent_id, ops, window_secs));
     }
 
     /// Admin: remove per-agent override; agent falls back to global config.
@@ -486,7 +491,8 @@ impl ExecutionHub {
 
         let agent_key = (AGENT_RATE_LIMIT_PREFIX, agent_id);
         env.storage().instance().remove(&agent_key);
-        env.events().publish((symbol_short!("rate_rst"),), (agent_id,));
+        env.events()
+            .publish((symbol_short!("rate_rst"),), (agent_id,));
     }
 
     /// Admin: emergency rate limit bypass for a specific agent (with audit log).
@@ -511,7 +517,8 @@ impl ExecutionHub {
         };
         let bypass_key = (BYPASS_PREFIX, agent_id);
         env.storage().instance().set(&bypass_key, &record);
-        env.events().publish((symbol_short!("bypass_on"),), (agent_id, reason));
+        env.events()
+            .publish((symbol_short!("bypass_on"),), (agent_id, reason));
     }
 
     /// Admin: clear emergency bypass for an agent.
@@ -522,27 +529,21 @@ impl ExecutionHub {
 
         let bypass_key = (BYPASS_PREFIX, agent_id);
         env.storage().instance().remove(&bypass_key);
-        env.events().publish((symbol_short!("bypass_off"),), (agent_id,));
+        env.events()
+            .publish((symbol_short!("byp_off"),), (agent_id,));
     }
 
     // Transfer admin rights
     pub fn transfer_admin(env: Env, current_admin: Address, new_admin: Address) {
-        current_admin.require_auth();
-        Self::verify_admin(&env, &current_admin);
-
-        env.storage().instance().set(&ADMIN_KEY, &new_admin);
+        admin::transfer_admin(&env, &current_admin, &new_admin)
+            .unwrap_or_else(|_| panic!("Unauthorized: caller is not admin"));
         env.events()
             .publish((symbol_short!("adm_xfer"),), (current_admin, new_admin));
     }
 
     // Helper: verify admin
     fn verify_admin(env: &Env, caller: &Address) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&ADMIN_KEY)
-            .unwrap_or_else(|| panic!("Admin not set"));
-        if caller != &admin {
+        if admin::verify_admin(env, caller) == Err(ContractError::Unauthorized) {
             panic!("Unauthorized: caller is not admin");
         }
     }
@@ -560,7 +561,11 @@ impl ExecutionHub {
     // Helper: get effective rate limit for agent (override or global)
     fn get_effective_rate_limit(env: &Env, agent_id: u64) -> RateLimitConfig {
         let agent_key = (AGENT_RATE_LIMIT_PREFIX, agent_id);
-        if let Some(config) = env.storage().instance().get::<_, RateLimitConfig>(&agent_key) {
+        if let Some(config) = env
+            .storage()
+            .instance()
+            .get::<_, RateLimitConfig>(&agent_key)
+        {
             return config;
         }
         env.storage()
@@ -581,7 +586,7 @@ impl ExecutionHub {
 
     // Helper: validate agent ID
     fn validate_agent_id(agent_id: u64) {
-        if agent_id == 0 {
+        if validation::validate_nonzero_id(agent_id).is_err() {
             panic!("Invalid agent ID: must be non-zero");
         }
     }

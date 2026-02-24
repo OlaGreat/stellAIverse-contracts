@@ -7,8 +7,12 @@ use soroban_sdk::{contract, contractimpl, token, Address, Env, String, Symbol, V
 use stellai_lib::{
     atomic::AtomicTransactionSupport,
     audit::{create_audit_log, OperationType},
-    Approval, ApprovalConfig, ApprovalHistory, ApprovalStatus, Auction, AuctionStatus, AuctionType,
-    Listing, ListingType, RoyaltyInfo, LISTING_COUNTER_KEY,
+    storage_keys::LISTING_COUNTER_KEY,
+    types::{
+        Approval, ApprovalConfig, ApprovalHistory, ApprovalStatus, Auction, AuctionStatus,
+        AuctionType, Listing, ListingType, RoyaltyInfo,
+    },
+    validation,
 };
 
 use atomic::MarketplaceAtomicSupport;
@@ -67,7 +71,7 @@ impl Marketplace {
     ) -> u64 {
         seller.require_auth();
 
-        if agent_id == 0 {
+        if validation::validate_nonzero_id(agent_id).is_err() {
             panic!("Invalid agent ID");
         }
         if listing_type > 2 {
@@ -137,7 +141,7 @@ impl Marketplace {
     pub fn buy_agent(env: Env, listing_id: u64, buyer: Address) {
         buyer.require_auth();
 
-        if listing_id == 0 {
+        if validation::validate_nonzero_id(listing_id).is_err() {
             panic!("Invalid listing ID");
         }
 
@@ -191,7 +195,7 @@ impl Marketplace {
     pub fn cancel_listing(env: Env, listing_id: u64, seller: Address) {
         seller.require_auth();
 
-        if listing_id == 0 {
+        if validation::validate_nonzero_id(listing_id).is_err() {
             panic!("Invalid listing ID");
         }
 
@@ -217,7 +221,7 @@ impl Marketplace {
 
     /// Get a specific listing
     pub fn get_listing(env: Env, listing_id: u64) -> Option<Listing> {
-        if listing_id == 0 {
+        if validation::validate_nonzero_id(listing_id).is_err() {
             panic!("Invalid listing ID");
         }
 
@@ -229,7 +233,7 @@ impl Marketplace {
     pub fn set_royalty(env: Env, agent_id: u64, creator: Address, recipient: Address, fee: u32) {
         creator.require_auth();
 
-        if agent_id == 0 {
+        if validation::validate_nonzero_id(agent_id).is_err() {
             panic!("Invalid agent ID");
         }
         if fee > 10000 {
@@ -248,7 +252,7 @@ impl Marketplace {
 
     /// Get royalty info for an agent
     pub fn get_royalty(env: Env, agent_id: u64) -> Option<RoyaltyInfo> {
-        if agent_id == 0 {
+        if validation::validate_nonzero_id(agent_id).is_err() {
             panic!("Invalid agent ID");
         }
 

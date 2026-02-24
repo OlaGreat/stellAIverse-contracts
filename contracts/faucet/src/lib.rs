@@ -4,8 +4,12 @@ extern crate alloc;
 // use soroban_sdk::{contract, contractimpl, Address, Env, String, Symbol, Map};
 use soroban_sdk::{contract, contractimpl, Address, Env, Symbol};
 use stellai_lib::{
-    ADMIN_KEY, CLAIM_COOLDOWN_KEY, DEFAULT_COOLDOWN_SECONDS, DEFAULT_MAX_CLAIMS,
-    MAX_CLAIMS_PER_PERIOD_KEY, TESTNET_FLAG_KEY,
+    admin,
+    storage_keys::{
+        CLAIM_COOLDOWN_KEY, DEFAULT_COOLDOWN_SECONDS, DEFAULT_MAX_CLAIMS,
+        MAX_CLAIMS_PER_PERIOD_KEY, TESTNET_FLAG_KEY,
+    },
+    ADMIN_KEY,
 };
 
 #[contract]
@@ -42,13 +46,7 @@ impl Faucet {
 
     /// Verify caller is admin
     fn verify_admin(env: &Env, caller: &Address) {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&Symbol::new(env, ADMIN_KEY))
-            .expect("Admin not set");
-
-        if caller != &admin {
+        if admin::verify_admin(env, caller).is_err() {
             panic!("Unauthorized: caller is not admin");
         }
     }

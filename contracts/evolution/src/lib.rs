@@ -8,8 +8,11 @@ use evolution_history::{
 };
 use soroban_sdk::{contract, contractimpl, Address, Env, String, Symbol, Vec};
 use stellai_lib::{
+    admin,
     audit::{create_audit_log, OperationType},
-    EvolutionRequest, EvolutionStatus, ADMIN_KEY, REQUEST_COUNTER_KEY,
+    storage_keys::REQUEST_COUNTER_KEY,
+    types::{EvolutionRequest, EvolutionStatus},
+    ADMIN_KEY,
 };
 
 #[contract]
@@ -109,11 +112,7 @@ impl Evolution {
     /// This approves the request and records the history.
     pub fn execute_evolution(env: Env, request_id: u64, from_stage: u32, to_stage: u32) {
         // 1. Verify Admin Auth
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&Symbol::new(&env, ADMIN_KEY))
-            .unwrap();
+        let admin: Address = admin::get_admin(&env).unwrap();
         admin.require_auth();
 
         // 2. Get the request
