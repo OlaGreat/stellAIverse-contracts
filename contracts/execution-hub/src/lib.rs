@@ -86,7 +86,10 @@ impl ExecutionHub {
     // Increment execution ID
     fn next_execution_id(env: &Env) -> u64 {
         let current: u64 = env.storage().instance().get(&EXEC_CTR_KEY).unwrap_or(0u64);
-        let next = current.checked_add(1).expect("Execution ID overflow");
+        let next = current.saturating_add(1);
+        if next == 0 {
+            panic!("Execution ID overflow");
+        }
         env.storage().instance().set(&EXEC_CTR_KEY, &next);
         next
     }
@@ -404,7 +407,7 @@ impl ExecutionHub {
         env.storage()
             .instance()
             .get(&ADMIN_KEY)
-            .expect("Admin not set")
+            .unwrap_or_else(|| panic!("Admin not set"))
     }
 
     // Transfer admin rights
@@ -423,7 +426,7 @@ impl ExecutionHub {
             .storage()
             .instance()
             .get(&ADMIN_KEY)
-            .expect("Admin not set");
+            .unwrap_or_else(|| panic!("Admin not set"));
         if caller != &admin {
             panic!("Unauthorized: caller is not admin");
         }

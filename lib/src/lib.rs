@@ -1,5 +1,10 @@
 #![no_std]
 pub mod errors;
+pub mod audit;
+pub mod audit_helpers;
+
+#[cfg(test)]
+mod audit_tests;
 
 use soroban_sdk::{ contracttype, symbol_short, Address, Bytes, String, Symbol, Vec };
 
@@ -146,7 +151,11 @@ pub struct Auction {
     pub end_time: u64,
     pub min_bid_increment_bps: u32,
     pub status: AuctionStatus,
-    pub dutch_config: Option<DutchAuctionConfig>,
+    pub dutch_config_enabled: bool,
+    pub dutch_config_start_price: i128,
+    pub dutch_config_end_price: i128,
+    pub dutch_config_duration_seconds: u64,
+    pub dutch_config_price_decay: PriceDecay,
 }
 
 /// Multi-signature approval configuration for high-value sales

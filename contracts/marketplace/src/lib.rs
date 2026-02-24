@@ -19,6 +19,7 @@ use stellai_lib::{
     DEFAULT_APPROVERS_REQUIRED,
     DEFAULT_TOTAL_APPROVERS,
     DEFAULT_APPROVAL_TTL_SECONDS,
+    audit::{create_audit_log, OperationType},
 };
 
 mod storage;
@@ -118,7 +119,23 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "listing_created"),),
-            (listing_id, agent_id, seller, price)
+            (listing_id, agent_id, seller.clone(), price)
+        );
+
+        // Log audit entry for sale created
+        let before_state = String::from_str(&env, "{}");
+        let after_state = String::from_str(&env, "{\"listing_created\":true}");
+        let tx_hash = String::from_str(&env, "create_listing");
+        let description = Some(String::from_str(&env, "Marketplace listing created"));
+        
+        let _ = create_audit_log(
+            &env,
+            seller,
+            OperationType::SaleCreated,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
 
         listing_id
@@ -155,7 +172,23 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "agent_sold"),),
-            (listing_id, listing.agent_id, buyer)
+            (listing_id, listing.agent_id, buyer.clone())
+        );
+
+        // Log audit entry for sale completed
+        let before_state = String::from_str(&env, "{\"active\":true}");
+        let after_state = String::from_str(&env, "{\"active\":false}");
+        let tx_hash = String::from_str(&env, "buy_agent");
+        let description = Some(String::from_str(&env, "Sale completed"));
+        
+        let _ = create_audit_log(
+            &env,
+            buyer,
+            OperationType::SaleCompleted,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
     }
 
@@ -806,7 +839,23 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "BidPlaced"),),
-            (auction_id, bidder, amount, auction.end_time)
+            (auction_id, bidder.clone(), amount, auction.end_time)
+        );
+
+        // Audit log for bid placement
+        let before_state = String::from_str(&env, "{\"bid_placed\":false}");
+        let after_state = String::from_str(&env, "{\"bid_placed\":true}");
+        let tx_hash = String::from_str(&env, "place_bid");
+        let description = Some(String::from_str(&env, "Auction bid placed"));
+        
+        let _ = create_audit_log(
+            &env,
+            bidder,
+            OperationType::AuctionBidPlaced,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
     }
 
