@@ -1,8 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, IntoVal, String,
-    Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, String, Symbol, Vec,
 };
 use stellai_lib::{
     ADMIN_KEY, DEFAULT_RATE_LIMIT_OPERATIONS, DEFAULT_RATE_LIMIT_WINDOW_SECONDS, EXEC_CTR_KEY,
@@ -24,6 +23,12 @@ pub struct OperatorData {
 }
 
 const AGENT_NFT_KEY: &str = "agent_nft";
+
+// Rate limit configuration storage keys
+const GLOBAL_RATE_LIMIT_KEY: Symbol = symbol_short!("rate_gl");
+const AGENT_RATE_LIMIT_PREFIX: Symbol = symbol_short!("rate_ag");
+const BYPASS_PREFIX: Symbol = symbol_short!("bypass");
+
 
 #[derive(Clone)]
 #[contracttype]
@@ -59,6 +64,22 @@ pub struct RateLimitData {
     pub count: u32,
 }
 
+/// Configurable rate limit: max operations per window_seconds (per-agent or global).
+#[derive(Clone)]
+#[contracttype]
+pub struct RateLimitConfig {
+    pub operations: u32,
+    pub window_seconds: u64,
+}
+
+/// Audit record for emergency rate limit bypass (admin only).
+#[derive(Clone)]
+#[contracttype]
+pub struct BypassRecord {
+    pub valid_until: u64,
+    pub reason: String,
+}
+
 #[contract]
 pub struct ExecutionHub;
 
@@ -77,8 +98,13 @@ impl ExecutionHub {
             .set(&Symbol::new(&env, AGENT_NFT_KEY), &agent_nft);
         env.storage().instance().set(&EXEC_CTR_KEY, &0u64);
 
-        env.events()
-            .publish((symbol_short!("init"),), (admin, agent_nft));
+        let global_rate_limit = RateLimitConfig {
+            operations: DEFAULT_RATE_LIMIT_OPERATIONS,
+            window_seconds: DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
+        };
+        env.storage().instance().set(&GLOBAL_RATE_LIMIT_KEY, &global_rate_limit);
+
+        env.events().publish((symbol_short!("init"),), (admin, agent_nft));
     }
 
     // Get current execution counter
@@ -260,13 +286,8 @@ impl ExecutionHub {
             panic!("Invalid nonce: replay protection triggered");
         }
 
-        // Rate limiting
-        Self::check_rate_limit(
-            &env,
-            agent_id,
-            DEFAULT_RATE_LIMIT_OPERATIONS,
-            DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
-        );
+        // Rate limiting (uses configurable global/per-agent config; bypass if admin set one)
+        Self::check_rate_limit(&env, agent_id);
 
         let execution_id = Self::next_execution_id(&env);
         let timestamp = env.ledger().timestamp();
@@ -415,6 +436,95 @@ impl ExecutionHub {
             .unwrap_or_else(|| panic!("Admin not set"))
     }
 
+    /// Returns the effective rate limit config for an agent (per-agent override or global).
+    pub fn get_rate_limit(env: Env, agent_id: u64) -> RateLimitConfig {
+        Self::get_effective_rate_limit(&env, agent_id)
+    }
+
+    /// Admin: set global rate limit (applies to all agents without an override).
+    pub fn set_global_rate_limit(env: Env, admin: Address, ops: u32, window_secs: u64) {
+        admin.require_auth();
+        Self::verify_admin(&env, &admin);
+        Self::validate_rate_limit_config(ops, window_secs);
+
+        let config = RateLimitConfig {
+            operations: ops,
+            window_seconds: window_secs,
+        };
+        env.storage().instance().set(&GLOBAL_RATE_LIMIT_KEY, &config);
+        // agent_id 0 denotes global in events
+        env.events().publish(
+            (symbol_short!("rate_cfg"),),
+            (0u64, ops, window_secs),
+        );
+    }
+
+    /// Admin: set per-agent rate limit override (e.g. for trusted oracles or high-frequency agents).
+    pub fn set_agent_rate_limit(env: Env, admin: Address, agent_id: u64, ops: u32, window_secs: u64) {
+        admin.require_auth();
+        Self::verify_admin(&env, &admin);
+        Self::validate_agent_id(agent_id);
+        Self::validate_rate_limit_config(ops, window_secs);
+
+        let config = RateLimitConfig {
+            operations: ops,
+            window_seconds: window_secs,
+        };
+        let agent_key = (AGENT_RATE_LIMIT_PREFIX, agent_id);
+        env.storage().instance().set(&agent_key, &config);
+        env.events().publish(
+            (symbol_short!("rate_cfg"),),
+            (agent_id, ops, window_secs),
+        );
+    }
+
+    /// Admin: remove per-agent override; agent falls back to global config.
+    pub fn reset_agent_rate_limit(env: Env, admin: Address, agent_id: u64) {
+        admin.require_auth();
+        Self::verify_admin(&env, &admin);
+        Self::validate_agent_id(agent_id);
+
+        let agent_key = (AGENT_RATE_LIMIT_PREFIX, agent_id);
+        env.storage().instance().remove(&agent_key);
+        env.events().publish((symbol_short!("rate_rst"),), (agent_id,));
+    }
+
+    /// Admin: emergency rate limit bypass for a specific agent (with audit log).
+    pub fn set_rate_limit_bypass(
+        env: Env,
+        admin: Address,
+        agent_id: u64,
+        reason: String,
+        valid_until: u64,
+    ) {
+        admin.require_auth();
+        Self::verify_admin(&env, &admin);
+        Self::validate_agent_id(agent_id);
+        let now = env.ledger().timestamp();
+        if valid_until <= now {
+            panic!("valid_until must be in the future");
+        }
+
+        let record = BypassRecord {
+            valid_until,
+            reason: reason.clone(),
+        };
+        let bypass_key = (BYPASS_PREFIX, agent_id);
+        env.storage().instance().set(&bypass_key, &record);
+        env.events().publish((symbol_short!("bypass_on"),), (agent_id, reason));
+    }
+
+    /// Admin: clear emergency bypass for an agent.
+    pub fn clear_rate_limit_bypass(env: Env, admin: Address, agent_id: u64) {
+        admin.require_auth();
+        Self::verify_admin(&env, &admin);
+        Self::validate_agent_id(agent_id);
+
+        let bypass_key = (BYPASS_PREFIX, agent_id);
+        env.storage().instance().remove(&bypass_key);
+        env.events().publish((symbol_short!("bypass_off"),), (agent_id,));
+    }
+
     // Transfer admin rights
     pub fn transfer_admin(env: Env, current_admin: Address, new_admin: Address) {
         current_admin.require_auth();
@@ -435,6 +545,38 @@ impl ExecutionHub {
         if caller != &admin {
             panic!("Unauthorized: caller is not admin");
         }
+    }
+
+    // Helper: validate rate limit config (ops and window must be positive)
+    fn validate_rate_limit_config(ops: u32, window_secs: u64) {
+        if ops == 0 {
+            panic!("operations must be greater than 0");
+        }
+        if window_secs == 0 {
+            panic!("window_seconds must be greater than 0");
+        }
+    }
+
+    // Helper: get effective rate limit for agent (override or global)
+    fn get_effective_rate_limit(env: &Env, agent_id: u64) -> RateLimitConfig {
+        let agent_key = (AGENT_RATE_LIMIT_PREFIX, agent_id);
+        if let Some(config) = env.storage().instance().get::<_, RateLimitConfig>(&agent_key) {
+            return config;
+        }
+        env.storage()
+            .instance()
+            .get(&GLOBAL_RATE_LIMIT_KEY)
+            .unwrap_or_else(|| panic!("Global rate limit not set"))
+    }
+
+    // Helper: check if agent has an active bypass
+    fn has_active_bypass(env: &Env, agent_id: u64) -> bool {
+        let bypass_key = (BYPASS_PREFIX, agent_id);
+        let now = env.ledger().timestamp();
+        if let Some(record) = env.storage().instance().get::<_, BypassRecord>(&bypass_key) {
+            return now < record.valid_until;
+        }
+        false
     }
 
     // Helper: validate agent ID
@@ -544,8 +686,15 @@ impl ExecutionHub {
         env.storage().instance().set(&exec_to_agent_key, &agent_id);
     }
 
-    // Helper: check rate limit
-    fn check_rate_limit(env: &Env, agent_id: u64, max_operations: u32, window_seconds: u64) {
+    // Helper: check rate limit (uses effective config; skips if bypass active)
+    fn check_rate_limit(env: &Env, agent_id: u64) {
+        if Self::has_active_bypass(env, agent_id) {
+            return;
+        }
+        let config = Self::get_effective_rate_limit(env, agent_id);
+        let max_operations = config.operations;
+        let window_seconds = config.window_seconds;
+
         let now = env.ledger().timestamp();
         let limit_key = symbol_short!("ratelim");
         let agent_limit_key = (limit_key, agent_id);
@@ -946,5 +1095,176 @@ mod test {
         let receipt_2 = client.get_execution_receipt(&exec_id).unwrap();
         assert_eq!(receipt_1.execution_hash, receipt_2.execution_hash);
         assert_eq!(receipt_1.timestamp, receipt_2.timestamp);
+    }
+
+    // --- Rate limit configuration tests ---
+
+    #[test]
+    fn test_rate_limit_config_storage_and_retrieval() {
+        let (env, client, admin, agent_nft, _) = setup_test();
+        let executor = Address::generate(&env);
+        agent_nft.set_owner(&1, &executor);
+
+        // After init, get_rate_limit returns global default (100, 60 from lib)
+        let config = client.get_rate_limit(&1);
+        assert_eq!(config.operations, 100);
+        assert_eq!(config.window_seconds, 60);
+
+        // Set per-agent override
+        client.set_agent_rate_limit(&admin, &1, &200, &120);
+        let config = client.get_rate_limit(&1);
+        assert_eq!(config.operations, 200);
+        assert_eq!(config.window_seconds, 120);
+
+        // Agent 2 has no override, so gets global
+        let config2 = client.get_rate_limit(&2);
+        assert_eq!(config2.operations, 100);
+        assert_eq!(config2.window_seconds, 60);
+    }
+
+    #[test]
+    fn test_global_rate_limit_change() {
+        let (env, client, admin, agent_nft, _) = setup_test();
+        agent_nft.set_owner(&1, &Address::generate(&env));
+
+        client.set_global_rate_limit(&admin, &50, &300);
+        let config = client.get_rate_limit(&1);
+        assert_eq!(config.operations, 50);
+        assert_eq!(config.window_seconds, 300);
+    }
+
+    #[test]
+    fn test_agent_override_and_reset() {
+        let (env, client, admin, agent_nft, _) = setup_test();
+        agent_nft.set_owner(&1, &Address::generate(&env));
+
+        client.set_agent_rate_limit(&admin, &1, &500, &3600);
+        let config = client.get_rate_limit(&1);
+        assert_eq!(config.operations, 500);
+        assert_eq!(config.window_seconds, 3600);
+
+        client.reset_agent_rate_limit(&admin, &1);
+        let config = client.get_rate_limit(&1);
+        assert_eq!(config.operations, 100);
+        assert_eq!(config.window_seconds, 60);
+    }
+
+    #[test]
+    fn test_multiple_rate_limit_levels() {
+        let (env, client, admin, agent_nft, _) = setup_test();
+        let exec1 = Address::generate(&env);
+        let exec2 = Address::generate(&env);
+        agent_nft.set_owner(&1, &exec1);
+        agent_nft.set_owner(&2, &exec2);
+
+        client.set_global_rate_limit(&admin, &10, &60);
+        client.set_agent_rate_limit(&admin, &1, &1000, &3600); // high-frequency agent
+
+        assert_eq!(client.get_rate_limit(&1).operations, 1000);
+        assert_eq!(client.get_rate_limit(&2).operations, 10);
+    }
+
+    #[test]
+    #[should_panic(expected = "Rate limit exceeded")]
+    fn test_rate_limit_integration_with_execution() {
+        let (env, client, admin, agent_nft, _) = setup_test();
+        let executor = Address::generate(&env);
+        agent_nft.set_owner(&1, &executor);
+
+        client.set_global_rate_limit(&admin, &3, &60);
+        let action = String::from_str(&env, "test");
+        let params = Bytes::from_array(&env, &[1]);
+
+        for i in 1..=3u64 {
+            let h = Bytes::from_array(&env, &[i as u8, (i * 2) as u8]);
+            client.execute_action(&1, &executor, &action, &params, &i, &h);
+        }
+        let h4 = Bytes::from_array(&env, &[4, 8]);
+        client.execute_action(&1, &executor, &action, &params, &4, &h4);
+    }
+
+    #[test]
+    #[should_panic(expected = "operations must be greater than 0")]
+    fn test_rate_limit_zero_ops_panics() {
+        let (env, client, admin, _, _) = setup_test();
+        client.set_global_rate_limit(&admin, &0, &60);
+    }
+
+    #[test]
+    #[should_panic(expected = "window_seconds must be greater than 0")]
+    fn test_rate_limit_zero_window_panics() {
+        let (env, client, admin, _, _) = setup_test();
+        client.set_global_rate_limit(&admin, &100, &0);
+    }
+
+    #[test]
+    fn test_rate_limit_max_window_values() {
+        let (env, client, admin, agent_nft, _) = setup_test();
+        agent_nft.set_owner(&1, &Address::generate(&env));
+        client.set_global_rate_limit(&admin, &1, &u64::MAX);
+        let config = client.get_rate_limit(&1);
+        assert_eq!(config.operations, 1);
+        assert_eq!(config.window_seconds, u64::MAX);
+    }
+
+    #[test]
+    fn test_bypass_allows_over_limit() {
+        let (env, client, admin, agent_nft, _) = setup_test();
+        let executor = Address::generate(&env);
+        agent_nft.set_owner(&1, &executor);
+
+        client.set_global_rate_limit(&admin, &2, &60);
+        let action = String::from_str(&env, "test");
+        let params = Bytes::from_array(&env, &[1]);
+        let reason = String::from_str(&env, "emergency maintenance");
+
+        let now = env.ledger().timestamp();
+        client.set_rate_limit_bypass(&admin, &1, &reason, &(now + 3600));
+
+        for i in 1..=5u64 {
+            let h = Bytes::from_array(&env, &[i as u8]);
+            let id = client.execute_action(&1, &executor, &action, &params, &i, &h);
+            assert!(id > 0);
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "Rate limit exceeded")]
+    fn test_bypass_cleared_then_limit_applies() {
+        let (env, client, admin, agent_nft, _) = setup_test();
+        let executor = Address::generate(&env);
+        agent_nft.set_owner(&1, &executor);
+
+        client.set_global_rate_limit(&admin, &1, &60);
+        let action = String::from_str(&env, "test");
+        let params = Bytes::from_array(&env, &[1]);
+        let reason = String::from_str(&env, "brief bypass");
+        let now = env.ledger().timestamp();
+        client.set_rate_limit_bypass(&admin, &1, &reason, &(now + 3600));
+        let h1 = Bytes::from_array(&env, &[1]);
+        client.execute_action(&1, &executor, &action, &params, &1, &h1);
+
+        client.clear_rate_limit_bypass(&admin, &1);
+        let h2 = Bytes::from_array(&env, &[2]);
+        client.execute_action(&1, &executor, &action, &params, &2, &h2);
+        let h3 = Bytes::from_array(&env, &[3]);
+        client.execute_action(&1, &executor, &action, &params, &3, &h3);
+    }
+
+    #[test]
+    #[should_panic(expected = "valid_until must be in the future")]
+    fn test_bypass_valid_until_must_be_future() {
+        let (env, client, admin, _, _) = setup_test();
+        let reason = String::from_str(&env, "reason");
+        let now = env.ledger().timestamp();
+        client.set_rate_limit_bypass(&admin, &1, &reason, &now);
+    }
+
+    #[test]
+    #[should_panic(expected = "Unauthorized: caller is not admin")]
+    fn test_set_global_rate_limit_non_admin_panics() {
+        let (env, client, _admin, _, _) = setup_test();
+        let other = Address::generate(&env);
+        client.set_global_rate_limit(&other, &50, &60);
     }
 }
