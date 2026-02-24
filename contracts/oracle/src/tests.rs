@@ -4,7 +4,9 @@ use crate::{Oracle, OracleClient, RelayRequest};
 use ed25519_dalek::SigningKey;
 use soroban_sdk::testutils::{Address as _, Ledger};
 use soroban_sdk::xdr::{self, Limited, Limits, WriteXdr};
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Symbol, TryIntoVal, Val, Vec};
+use soroban_sdk::{
+    contract, contractimpl, symbol_short, Address, BytesN, Env, Symbol, TryIntoVal, Val, Vec,
+};
 
 #[contract]
 pub struct Receiver;
