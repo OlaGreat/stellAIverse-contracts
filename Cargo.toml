@@ -8,6 +8,7 @@ members = [
     "contracts/oracle",
     "contracts/faucet",
     "contracts/governance",
+    "contracts/transaction-coordinator",
     "lib",
 ]
 
