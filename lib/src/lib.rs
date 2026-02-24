@@ -127,9 +127,8 @@ pub enum PriceDecay {
     Exponential = 1,
 }
 
-/// Dutch auction parameters. Used only as an argument type; stored flat on Auction.
-/// Not #[contracttype] to avoid ScVal derivation issues when nested in Option.
-#[derive(Clone)]
+#[derive(Clone, Copy)]
+#[contracttype]
 pub struct DutchAuctionConfig {
     pub start_price: i128,
     pub end_price: i128,
@@ -152,11 +151,7 @@ pub struct Auction {
     pub end_time: u64,
     pub min_bid_increment_bps: u32,
     pub status: AuctionStatus,
-    /// Dutch auction only; when Some, all four are set.
-    pub dutch_start_price: Option<i128>,
-    pub dutch_end_price: Option<i128>,
-    pub dutch_duration_seconds: Option<u64>,
-    pub dutch_price_decay: Option<u32>,
+    // pub dutch_config: Option<DutchAuctionConfig>, // Temporarily commented out
 }
 
 /// Multi-signature approval configuration for high-value sales
@@ -170,7 +165,7 @@ pub struct ApprovalConfig {
 }
 
 /// Approval status for high-value transactions
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 #[contracttype]
 #[repr(u32)]
 pub enum ApprovalStatus {
