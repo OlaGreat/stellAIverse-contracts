@@ -96,14 +96,14 @@ pub struct RoyaltyInfo {
 
 /// Oracle attestation for evolution completion (signed by oracle provider)
 #[contracttype]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum AuctionType {
     English = 0,
     Dutch = 1,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[contracttype]
 #[repr(u32)]
 pub enum AuctionStatus {
@@ -114,7 +114,7 @@ pub enum AuctionStatus {
     Won = 4,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[contracttype]
 #[repr(u32)]
 pub enum PriceDecay {
@@ -122,8 +122,8 @@ pub enum PriceDecay {
     Exponential = 1,
 }
 
-#[derive(Clone)]
 #[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DutchAuctionConfig {
     pub start_price: i128,
     pub end_price: i128,
@@ -131,8 +131,8 @@ pub struct DutchAuctionConfig {
     pub price_decay: PriceDecay,
 }
 
-#[derive(Clone)]
 #[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Auction {
     pub auction_id: u64,
     pub agent_id: u64,
@@ -146,7 +146,13 @@ pub struct Auction {
     pub end_time: u64,
     pub min_bid_increment_bps: u32,
     pub status: AuctionStatus,
-    pub dutch_config: Option<DutchAuctionConfig>,
+    // Workaround for Soroban SDK limitation: Option<CustomStruct> and Option<CustomEnum> don't work in test builds
+    // Store dutch config fields separately with sentinel values (0 = not set)
+    pub has_dutch_config: bool,
+    pub dutch_start_price: i128,
+    pub dutch_end_price: i128,
+    pub dutch_duration_seconds: u64,
+    pub dutch_price_decay: PriceDecay,
 }
 
 pub struct EvolutionAttestation {
