@@ -1,5 +1,10 @@
 #![no_std]
 pub mod errors;
+pub mod audit;
+pub mod audit_helpers;
+
+#[cfg(test)]
+mod audit_tests;
 
 use soroban_sdk::{ contracttype, symbol_short, Address, Bytes, String, Symbol, Vec };
 
@@ -96,14 +101,14 @@ pub struct RoyaltyInfo {
 
 /// Oracle attestation for evolution completion (signed by oracle provider)
 #[contracttype]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum AuctionType {
     English = 0,
     Dutch = 1,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[contracttype]
 #[repr(u32)]
 pub enum AuctionStatus {
@@ -114,7 +119,7 @@ pub enum AuctionStatus {
     Won = 4,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[contracttype]
 #[repr(u32)]
 pub enum PriceDecay {
@@ -132,8 +137,8 @@ pub struct DutchAuctionConfig {
     pub price_decay: u32, // 0 = Linear, 1 = Exponential
 }
 
-#[derive(Clone)]
 #[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Auction {
     pub auction_id: u64,
     pub agent_id: u64,

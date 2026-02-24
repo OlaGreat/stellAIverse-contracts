@@ -10,8 +10,7 @@ use stellai_lib::{
 use crate::{Marketplace, MarketplaceClient};
 use crate::storage::{get_auction, set_auction};
 
-#[test]
-fn test_approval_config_default() {
+fn setup() -> (Env, MarketplaceClient<'static>, Address) {
     let env = Env::default();
     env.mock_all_auths();
     let contract_id = env.register_contract(None, Marketplace);
@@ -254,6 +253,7 @@ fn test_approval_history() {
 }
 
 #[test]
+#[should_panic(expected = "Approval expired")]
 fn test_approval_expiration() {
     let env = Env::default();
     env.mock_all_auths();
