@@ -101,14 +101,14 @@ pub struct RoyaltyInfo {
 
 /// Oracle attestation for evolution completion (signed by oracle provider)
 #[contracttype]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum AuctionType {
     English = 0,
     Dutch = 1,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[contracttype]
 #[repr(u32)]
 pub enum AuctionStatus {
@@ -119,7 +119,7 @@ pub enum AuctionStatus {
     Won = 4,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[contracttype]
 #[repr(u32)]
 pub enum PriceDecay {
@@ -127,8 +127,8 @@ pub enum PriceDecay {
     Exponential = 1,
 }
 
-#[derive(Clone)]
 #[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct DutchAuctionConfig {
     pub start_price: i128,
     pub end_price: i128,
@@ -136,8 +136,8 @@ pub struct DutchAuctionConfig {
     pub price_decay: PriceDecay,
 }
 
-#[derive(Clone)]
 #[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Auction {
     pub auction_id: u64,
     pub agent_id: u64,
@@ -151,63 +151,13 @@ pub struct Auction {
     pub end_time: u64,
     pub min_bid_increment_bps: u32,
     pub status: AuctionStatus,
-    pub dutch_config_enabled: bool,
-    pub dutch_config_start_price: i128,
-    pub dutch_config_end_price: i128,
-    pub dutch_config_duration_seconds: u64,
-    pub dutch_config_price_decay: PriceDecay,
-}
-
-/// Multi-signature approval configuration for high-value sales
-#[derive(Clone)]
-#[contracttype]
-pub struct ApprovalConfig {
-    pub threshold: i128, // Price threshold in stroops (default: 10,000 USDC equivalent)
-    pub approvers_required: u32, // N of M signatures required (default: 2)
-    pub total_approvers: u32, // Total number of authorized approvers (default: 3)
-    pub ttl_seconds: u64, // Time to live for approvals (default: 7 days = 604800 seconds)
-}
-
-/// Approval status for high-value transactions
-#[derive(Clone, Copy, PartialEq, Eq)]
-#[contracttype]
-#[repr(u32)]
-pub enum ApprovalStatus {
-    Pending = 0,
-    Approved = 1,
-    Rejected = 2,
-    Expired = 3,
-    Executed = 4,
-}
-
-/// Multi-signature approval for high-value agent sales
-#[derive(Clone)]
-#[contracttype]
-pub struct Approval {
-    pub approval_id: u64,
-    pub listing_id: Option<u64>, // For fixed-price sales
-    pub auction_id: Option<u64>, // For auction sales
-    pub buyer: Address,
-    pub price: i128,
-    pub proposed_at: u64,
-    pub expires_at: u64,
-    pub status: ApprovalStatus,
-    pub required_approvals: u32,
-    pub approvers: Vec<Address>, // All authorized approvers
-    pub approvals_received: Vec<Address>, // Addresses that have approved
-    pub rejections_received: Vec<Address>, // Addresses that have rejected
-    pub rejection_reasons: Vec<String>, // Reasons for rejections
-}
-
-/// Approval history entry for audit trail
-#[derive(Clone)]
-#[contracttype]
-pub struct ApprovalHistory {
-    pub approval_id: u64,
-    pub action: String, // "proposed", "approved", "rejected", "executed"
-    pub actor: Address,
-    pub timestamp: u64,
-    pub reason: Option<String>,
+    // Workaround for Soroban SDK limitation: Option<CustomStruct> and Option<CustomEnum> don't work in test builds
+    // Store dutch config fields separately with sentinel values (0 = not set)
+    pub has_dutch_config: bool,
+    pub dutch_start_price: i128,
+    pub dutch_end_price: i128,
+    pub dutch_duration_seconds: u64,
+    pub dutch_price_decay: PriceDecay,
 }
 
 pub struct EvolutionAttestation {
