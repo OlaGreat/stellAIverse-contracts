@@ -127,13 +127,14 @@ pub enum PriceDecay {
     Exponential = 1,
 }
 
-#[contracttype]
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Dutch auction parameters. Used only as an argument type; stored flat on Auction.
+/// Not #[contracttype] to avoid ScVal derivation issues when nested in Option.
+#[derive(Clone)]
 pub struct DutchAuctionConfig {
     pub start_price: i128,
     pub end_price: i128,
     pub duration_seconds: u64,
-    pub price_decay: PriceDecay,
+    pub price_decay: u32, // 0 = Linear, 1 = Exponential
 }
 
 #[contracttype]
@@ -151,13 +152,63 @@ pub struct Auction {
     pub end_time: u64,
     pub min_bid_increment_bps: u32,
     pub status: AuctionStatus,
-    // Workaround for Soroban SDK limitation: Option<CustomStruct> and Option<CustomEnum> don't work in test builds
-    // Store dutch config fields separately with sentinel values (0 = not set)
-    pub has_dutch_config: bool,
-    pub dutch_start_price: i128,
-    pub dutch_end_price: i128,
-    pub dutch_duration_seconds: u64,
-    pub dutch_price_decay: PriceDecay,
+    /// Dutch auction only; when Some, all four are set.
+    pub dutch_start_price: Option<i128>,
+    pub dutch_end_price: Option<i128>,
+    pub dutch_duration_seconds: Option<u64>,
+    pub dutch_price_decay: Option<u32>,
+}
+
+/// Multi-signature approval configuration for high-value sales
+#[derive(Clone)]
+#[contracttype]
+pub struct ApprovalConfig {
+    pub threshold: i128, // Price threshold in stroops (default: 10,000 USDC equivalent)
+    pub approvers_required: u32, // N of M signatures required (default: 2)
+    pub total_approvers: u32, // Total number of authorized approvers (default: 3)
+    pub ttl_seconds: u64, // Time to live for approvals (default: 7 days = 604800 seconds)
+}
+
+/// Approval status for high-value transactions
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[contracttype]
+#[repr(u32)]
+pub enum ApprovalStatus {
+    Pending = 0,
+    Approved = 1,
+    Rejected = 2,
+    Expired = 3,
+    Executed = 4,
+}
+
+/// Multi-signature approval for high-value agent sales
+#[derive(Clone)]
+#[contracttype]
+pub struct Approval {
+    pub approval_id: u64,
+    pub listing_id: Option<u64>, // For fixed-price sales
+    pub auction_id: Option<u64>, // For auction sales
+    pub buyer: Address,
+    pub price: i128,
+    pub proposed_at: u64,
+    pub expires_at: u64,
+    pub status: ApprovalStatus,
+    pub required_approvals: u32,
+    pub approvers: Vec<Address>, // All authorized approvers
+    pub approvals_received: Vec<Address>, // Addresses that have approved
+    pub rejections_received: Vec<Address>, // Addresses that have rejected
+    pub rejection_reasons: Vec<String>, // Reasons for rejections
+}
+
+/// Approval history entry for audit trail
+#[derive(Clone)]
+#[contracttype]
+pub struct ApprovalHistory {
+    pub approval_id: u64,
+    pub action: String, // "proposed", "approved", "rejected", "executed"
+    pub actor: Address,
+    pub timestamp: u64,
+    pub reason: Option<String>,
 }
 
 pub struct EvolutionAttestation {
@@ -219,3 +270,72 @@ pub const DEFAULT_APPROVAL_THRESHOLD: i128 = 10_000_000_000; // 10,000 USDC in s
 pub const DEFAULT_APPROVERS_REQUIRED: u32 = 2; // N of M
 pub const DEFAULT_TOTAL_APPROVERS: u32 = 3; // Total authorized approvers
 pub const DEFAULT_APPROVAL_TTL_SECONDS: u64 = 604800; // 7 days
+
+// ---------------------------------------------------------------------------
+// Lease lifecycle (marketplace)
+// ---------------------------------------------------------------------------
+
+/// State of a lease in its lifecycle.
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[contracttype]
+#[repr(u32)]
+pub enum LeaseState {
+    Active = 0,
+    ExtensionRequested = 1,
+    Terminated = 2,
+    Renewed = 3,
+}
+
+/// Full lease record: duration, renewal terms, termination conditions, deposit.
+#[derive(Clone)]
+#[contracttype]
+pub struct LeaseData {
+    pub lease_id: u64,
+    pub agent_id: u64,
+    pub listing_id: u64,
+    pub lessor: Address,
+    pub lessee: Address,
+    pub start_time: u64,
+    pub end_time: u64,
+    /// Duration in seconds.
+    pub duration_seconds: u64,
+    /// Deposit amount (e.g. 10% of lease value).
+    pub deposit_amount: i128,
+    /// Total value paid for the lease (e.g. price * duration factor).
+    pub total_value: i128,
+    /// Whether automatic renewal is configured (requires lessee consent when triggered).
+    pub auto_renew: bool,
+    /// Lessee has agreed to automatic renewal for the next term.
+    pub lessee_consent_for_renewal: bool,
+    pub status: LeaseState,
+    /// If status == ExtensionRequested, the pending extension id.
+    pub pending_extension_id: Option<u64>,
+}
+
+/// A request to extend an active lease by additional duration.
+#[derive(Clone)]
+#[contracttype]
+pub struct LeaseExtensionRequest {
+    pub extension_id: u64,
+    pub lease_id: u64,
+    pub additional_duration_seconds: u64,
+    pub requested_at: u64,
+    /// Pending until lessor approves.
+    pub approved: bool,
+}
+
+/// Single entry in lease history (for lessee/lessor audit).
+#[derive(Clone)]
+#[contracttype]
+pub struct LeaseHistoryEntry {
+    pub lease_id: u64,
+    pub action: String,
+    pub actor: Address,
+    pub timestamp: u64,
+    pub details: Option<String>,
+}
+
+// Lease config: basis points (bps). 1000 bps = 10%.
+pub const DEFAULT_LEASE_DEPOSIT_BPS: u32 = 1000; // 10% of lease value
+pub const DEFAULT_EARLY_TERMINATION_PENALTY_BPS: u32 = 2000; // 20% of remaining value
+pub const LEASE_EXTENSION_REQUEST_TTL_SECONDS: u64 = 604_800; // 7 days

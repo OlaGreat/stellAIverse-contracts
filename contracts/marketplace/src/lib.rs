@@ -9,17 +9,10 @@ use stellai_lib::{
     Auction,
     AuctionType,
     AuctionStatus,
-    DutchAuctionConfig,
-    PriceDecay,
     ApprovalConfig,
     Approval,
     ApprovalStatus,
     ApprovalHistory,
-    DEFAULT_APPROVAL_THRESHOLD,
-    DEFAULT_APPROVERS_REQUIRED,
-    DEFAULT_TOTAL_APPROVERS,
-    DEFAULT_APPROVAL_TTL_SECONDS,
-    audit::{create_audit_log, OperationType},
 };
 
 mod storage;
@@ -329,8 +322,8 @@ impl Marketplace {
             panic!("Price below approval threshold");
         }
 
-        assert!(approvers.len() >= (config.approvers_required as usize), "Insufficient approvers");
-        assert!(approvers.len() <= (config.total_approvers as usize), "Too many approvers");
+        assert!(approvers.len() >= config.approvers_required, "Insufficient approvers");
+        assert!(approvers.len() <= config.total_approvers, "Too many approvers");
 
         let approval_id = increment_approval_counter(&env);
         let now = env.ledger().timestamp();
@@ -357,7 +350,7 @@ impl Marketplace {
         let history = ApprovalHistory {
             approval_id,
             action: String::from_str(&env, "proposed"),
-            actor: buyer,
+            actor: buyer.clone(),
             timestamp: now,
             reason: None,
         };
@@ -384,8 +377,8 @@ impl Marketplace {
             panic!("Price below approval threshold");
         }
 
-        assert!(approvers.len() >= (config.approvers_required as usize), "Insufficient approvers");
-        assert!(approvers.len() <= (config.total_approvers as usize), "Too many approvers");
+        assert!(approvers.len() >= config.approvers_required, "Insufficient approvers");
+        assert!(approvers.len() <= config.total_approvers, "Too many approvers");
 
         let approval_id = increment_approval_counter(&env);
         let now = env.ledger().timestamp();
@@ -413,7 +406,7 @@ impl Marketplace {
         let history = ApprovalHistory {
             approval_id,
             action: String::from_str(&env, "proposed"),
-            actor: buyer,
+            actor: buyer.clone(),
             timestamp: now,
             reason: None,
         };
@@ -460,7 +453,7 @@ impl Marketplace {
         add_approval_history(&env, approval_id, &history);
 
         // Check if we have enough approvals
-        if approval.approvals_received.len() >= (approval.required_approvals as usize) {
+        if approval.approvals_received.len() >= approval.required_approvals {
             approval.status = ApprovalStatus::Approved;
 
             // Add final approval to history
@@ -581,7 +574,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "SaleExecuted"),),
-            (approval_id, listing_id, approval.buyer)
+            (approval_id, listing_id, updated_approval.buyer)
         );
     }
 
@@ -658,7 +651,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "SaleExecuted"),),
-            (approval_id, auction_id, approval.buyer)
+            (approval_id, auction_id, updated_approval.buyer)
         );
     }
 
@@ -726,6 +719,7 @@ impl Marketplace {
 
     // ---------------- AUCTIONS ----------------
 
+    /// Dutch params: (start_price, end_price, duration_seconds, price_decay). Use (None,None,None,None) for non-Dutch.
     pub fn create_auction(
         env: Env,
         agent_id: u64,
@@ -735,11 +729,13 @@ impl Marketplace {
         reserve_price: i128,
         duration: u64,
         min_bid_increment_bps: u32,
-        dutch_config: Option<DutchAuctionConfig>
+        dutch_params: (Option<i128>, Option<i128>, Option<u64>, Option<u32>),
     ) -> u64 {
         seller.require_auth();
         assert!(start_price > 0, "Invalid start price");
         assert!(duration > 0, "Invalid duration");
+
+        let (dutch_start_price, dutch_end_price, dutch_duration_seconds, dutch_price_decay) = dutch_params;
 
         let auction_id = increment_auction_counter(&env);
         let start_time = env.ledger().timestamp();
@@ -758,7 +754,10 @@ impl Marketplace {
             end_time,
             min_bid_increment_bps,
             status: AuctionStatus::Active,
-            dutch_config,
+            dutch_start_price,
+            dutch_end_price,
+            dutch_duration_seconds,
+            dutch_price_decay,
         };
 
         set_auction(&env, &auction);
@@ -775,28 +774,26 @@ impl Marketplace {
         let auction = get_auction(&env, auction_id).expect("Auction not found");
         assert!(auction.auction_type == AuctionType::Dutch, "Not a Dutch auction");
 
-        let config = auction.dutch_config.expect("Missing Dutch config");
+        let start_price = auction.dutch_start_price.expect("Missing Dutch config");
+        let end_price = auction.dutch_end_price.expect("Missing Dutch config");
+        let duration = auction.dutch_duration_seconds.expect("Missing Dutch config");
+        let price_decay = auction.dutch_price_decay.unwrap_or(0);
+
         let now = env.ledger().timestamp();
 
         if now <= auction.start_time {
-            return config.start_price;
+            return start_price;
         }
         if now >= auction.end_time {
-            return config.end_price;
+            return end_price;
         }
 
         let elapsed = now - auction.start_time;
-        let duration = config.duration_seconds;
-
-        match config.price_decay {
-            PriceDecay::Linear => {
-                let price_range = config.start_price - config.end_price;
-                config.start_price - (price_range * (elapsed as i128)) / (duration as i128)
-            }
-            PriceDecay::Exponential => {
-                let price_range = config.start_price - config.end_price;
-                config.start_price - (price_range * (elapsed as i128)) / (duration as i128)
-            }
+        let price_range = start_price - end_price;
+        if price_decay == 1 {
+            start_price - (price_range * (elapsed as i128)) / (duration as i128)
+        } else {
+            start_price - (price_range * (elapsed as i128)) / (duration as i128)
         }
     }
 
@@ -965,7 +962,313 @@ impl Marketplace {
 
         env.events().publish((Symbol::new(&env, "AuctionCancelled"),), (auction_id,));
     }
+
+    // LEASE LIFECYCLE (issue #49)
+    pub fn initiate_lease(env: Env, listing_id: u64, lessee: Address, duration_seconds: u64) -> u64 {
+        lessee.require_auth();
+        assert!(listing_id != 0, "Invalid listing ID");
+        assert!(duration_seconds > 0, "Duration must be positive");
+        let listing_key = (Symbol::new(&env, "listing"), listing_id);
+        let mut listing: Listing = env.storage().instance().get(&listing_key).expect("Listing not found");
+        assert!(listing.active, "Listing not active");
+        assert!(listing.listing_type == ListingType::Lease, "Listing is not a lease");
+        assert!(listing.seller != lessee, "Lessor cannot be lessee");
+        let config = get_lease_config(&env);
+        let total_value = listing.price;
+        let deposit_amount = (total_value * (config.deposit_bps as i128)) / 10_000;
+        let total_payment = total_value + deposit_amount;
+        let token_client = token::Client::new(&env, &get_payment_token(&env));
+        token_client.transfer(&lessee, &env.current_contract_address(), &total_payment);
+        token_client.transfer(&env.current_contract_address(), &listing.seller, &total_value);
+        listing.active = false;
+        env.storage().instance().set(&listing_key, &listing);
+        let lease_id = increment_lease_counter(&env);
+        let now = env.ledger().timestamp();
+        let end_time = now + duration_seconds;
+        let lease = stellai_lib::LeaseData {
+            lease_id,
+            agent_id: listing.agent_id,
+            listing_id,
+            lessor: listing.seller.clone(),
+            lessee: lessee.clone(),
+            start_time: now,
+            end_time,
+            duration_seconds,
+            deposit_amount,
+            total_value,
+            auto_renew: false,
+            lessee_consent_for_renewal: false,
+            status: stellai_lib::LeaseState::Active,
+            pending_extension_id: None,
+        };
+        set_lease(&env, &lease);
+        lessee_leases_append(&env, &lessee, lease_id);
+        lessor_leases_append(&env, &listing.seller, lease_id);
+        let history_entry = stellai_lib::LeaseHistoryEntry {
+            lease_id,
+            action: String::from_str(&env, "initiated"),
+            actor: lessee.clone(),
+            timestamp: now,
+            details: None,
+        };
+        add_lease_history(&env, lease_id, &history_entry);
+        env.events().publish((Symbol::new(&env, "LeaseInitiated"),), (lease_id, listing.agent_id, listing.seller, lessee, total_value, deposit_amount));
+        lease_id
+    }
+
+    pub fn request_lease_extension(env: Env, lease_id: u64, lessee: Address, additional_duration_seconds: u64) -> u64 {
+        lessee.require_auth();
+        assert!(lease_id != 0, "Invalid lease ID");
+        assert!(additional_duration_seconds > 0, "Additional duration must be positive");
+        let mut lease = get_lease(&env, lease_id).expect("Lease not found");
+        assert!(lease.lessee == lessee, "Unauthorized");
+        assert!(lease.status == stellai_lib::LeaseState::Active, "Lease not active");
+        assert!(env.ledger().timestamp() < lease.end_time, "Lease already ended");
+        let extension_id = increment_lease_extension_counter(&env);
+        let now = env.ledger().timestamp();
+        let req = stellai_lib::LeaseExtensionRequest {
+            extension_id,
+            lease_id,
+            additional_duration_seconds,
+            requested_at: now,
+            approved: false,
+        };
+        set_lease_extension_request(&env, &req);
+        lease.status = stellai_lib::LeaseState::ExtensionRequested;
+        lease.pending_extension_id = Some(extension_id);
+        set_lease(&env, &lease);
+        let history_entry = stellai_lib::LeaseHistoryEntry {
+            lease_id,
+            action: String::from_str(&env, "extension_requested"),
+            actor: lessee.clone(),
+            timestamp: now,
+            details: None,
+        };
+        add_lease_history(&env, lease_id, &history_entry);
+        env.events().publish((Symbol::new(&env, "LeaseExtensionRequested"),), (lease_id, extension_id, lessee, additional_duration_seconds));
+        extension_id
+    }
+
+    pub fn approve_lease_extension(env: Env, lease_id: u64, extension_id: u64, lessor: Address) {
+        lessor.require_auth();
+        assert!(lease_id != 0, "Invalid lease ID");
+        assert!(extension_id != 0, "Invalid extension ID");
+        let mut lease = get_lease(&env, lease_id).expect("Lease not found");
+        assert!(lease.lessor == lessor, "Unauthorized");
+        assert!(lease.status == stellai_lib::LeaseState::ExtensionRequested, "Lease not in extension requested state");
+        assert!(lease.pending_extension_id == Some(extension_id), "Extension ID mismatch");
+        let req = get_lease_extension_request(&env, extension_id).expect("Extension request not found");
+        assert!(!req.approved, "Already approved");
+        assert!(req.lease_id == lease_id, "Extension not for this lease");
+        let now = env.ledger().timestamp();
+        assert!(now <= req.requested_at + stellai_lib::LEASE_EXTENSION_REQUEST_TTL_SECONDS, "Extension request expired");
+        lease.end_time += req.additional_duration_seconds;
+        lease.duration_seconds += req.additional_duration_seconds;
+        lease.status = stellai_lib::LeaseState::Active;
+        lease.pending_extension_id = None;
+        set_lease(&env, &lease);
+        let mut approved_req = req.clone();
+        approved_req.approved = true;
+        set_lease_extension_request(&env, &approved_req);
+        let history_entry = stellai_lib::LeaseHistoryEntry {
+            lease_id,
+            action: String::from_str(&env, "extended"),
+            actor: lessor.clone(),
+            timestamp: now,
+            details: None,
+        };
+        add_lease_history(&env, lease_id, &history_entry);
+        env.events().publish((Symbol::new(&env, "LeaseExtended"),), (lease_id, extension_id, approved_req.additional_duration_seconds, lease.end_time));
+    }
+
+    pub fn early_termination(env: Env, lease_id: u64, lessee: Address, termination_fee_paid: i128) {
+        lessee.require_auth();
+        assert!(lease_id != 0, "Invalid lease ID");
+        let mut lease = get_lease(&env, lease_id).expect("Lease not found");
+        assert!(lease.lessee == lessee, "Unauthorized");
+        assert!(lease.status == stellai_lib::LeaseState::Active, "Lease not active");
+        assert!(env.ledger().timestamp() < lease.end_time, "Lease already ended");
+        let config = get_lease_config(&env);
+        let now = env.ledger().timestamp();
+        let remaining_seconds = lease.end_time.saturating_sub(now) as i128;
+        let total_seconds = lease.duration_seconds as i128;
+        let remaining_value = if total_seconds > 0 { (lease.total_value * remaining_seconds) / total_seconds } else { 0 };
+        let penalty = (remaining_value * (config.early_termination_penalty_bps as i128)) / 10_000;
+        assert!(termination_fee_paid >= penalty, "Insufficient termination fee");
+        let token_client = token::Client::new(&env, &get_payment_token(&env));
+        if termination_fee_paid > 0 {
+            token_client.transfer(&lessee, &env.current_contract_address(), &termination_fee_paid);
+        }
+        let refund_to_lessee = lease.deposit_amount - penalty;
+        let refund_to_lessee = if refund_to_lessee < 0 { 0 } else { refund_to_lessee };
+        let to_lessor = lease.deposit_amount - refund_to_lessee + termination_fee_paid;
+        token_client.transfer(&env.current_contract_address(), &lease.lessor, &to_lessor);
+        if refund_to_lessee > 0 {
+            token_client.transfer(&env.current_contract_address(), &lessee, &refund_to_lessee);
+        }
+        lease.status = stellai_lib::LeaseState::Terminated;
+        lease.pending_extension_id = None;
+        set_lease(&env, &lease);
+        let history_entry = stellai_lib::LeaseHistoryEntry {
+            lease_id,
+            action: String::from_str(&env, "terminated"),
+            actor: lessee.clone(),
+            timestamp: now,
+            details: None,
+        };
+        add_lease_history(&env, lease_id, &history_entry);
+        env.events().publish((Symbol::new(&env, "LeaseTerminated"),), (lease_id, lessee, termination_fee_paid, refund_to_lessee));
+    }
+
+    pub fn settle_lease_expiry(env: Env, lease_id: u64) {
+        let mut lease = get_lease(&env, lease_id).expect("Lease not found");
+        assert!(lease.status == stellai_lib::LeaseState::Active || lease.status == stellai_lib::LeaseState::ExtensionRequested, "Lease not active");
+        assert!(env.ledger().timestamp() >= lease.end_time, "Lease not yet expired");
+        let token_client = token::Client::new(&env, &get_payment_token(&env));
+        token_client.transfer(&env.current_contract_address(), &lease.lessee, &lease.deposit_amount);
+        lease.status = stellai_lib::LeaseState::Terminated;
+        lease.pending_extension_id = None;
+        set_lease(&env, &lease);
+        let now = env.ledger().timestamp();
+        let history_entry = stellai_lib::LeaseHistoryEntry {
+            lease_id,
+            action: String::from_str(&env, "expired"),
+            actor: env.current_contract_address(),
+            timestamp: now,
+            details: None,
+        };
+        add_lease_history(&env, lease_id, &history_entry);
+        env.events().publish((Symbol::new(&env, "LeaseExpired"),), (lease_id, lease.lessee, lease.deposit_amount));
+    }
+
+    pub fn set_lease_renewal_consent(env: Env, lease_id: u64, lessee: Address, consent: bool) {
+        lessee.require_auth();
+        let mut lease = get_lease(&env, lease_id).expect("Lease not found");
+        assert!(lease.lessee == lessee, "Unauthorized");
+        assert!(lease.status == stellai_lib::LeaseState::Active, "Lease not active");
+        lease.lessee_consent_for_renewal = consent;
+        set_lease(&env, &lease);
+    }
+
+    /// Lessor enables or disables automatic renewal for a lease.
+    pub fn set_lease_auto_renew(env: Env, lease_id: u64, lessor: Address, auto_renew: bool) {
+        lessor.require_auth();
+        let mut lease = get_lease(&env, lease_id).expect("Lease not found");
+        assert!(lease.lessor == lessor, "Unauthorized");
+        assert!(lease.status == stellai_lib::LeaseState::Active, "Lease not active");
+        lease.auto_renew = auto_renew;
+        set_lease(&env, &lease);
+    }
+
+    pub fn process_lease_renewal(env: Env, lease_id: u64) -> u64 {
+        let old_lease = get_lease(&env, lease_id).expect("Lease not found");
+        assert!(old_lease.status == stellai_lib::LeaseState::Active || old_lease.status == stellai_lib::LeaseState::ExtensionRequested, "Lease not active");
+        assert!(env.ledger().timestamp() >= old_lease.end_time, "Lease not yet expired");
+        assert!(old_lease.auto_renew, "Auto renewal not configured");
+        assert!(old_lease.lessee_consent_for_renewal, "Lessee has not consented to renewal");
+        let now = env.ledger().timestamp();
+        let new_lease_id = increment_lease_counter(&env);
+        let new_end_time = now + old_lease.duration_seconds;
+        let mut old_lease_updated = old_lease.clone();
+        old_lease_updated.status = stellai_lib::LeaseState::Renewed;
+        old_lease_updated.pending_extension_id = None;
+        set_lease(&env, &old_lease_updated);
+        let new_lease = stellai_lib::LeaseData {
+            lease_id: new_lease_id,
+            agent_id: old_lease.agent_id,
+            listing_id: old_lease.listing_id,
+            lessor: old_lease.lessor.clone(),
+            lessee: old_lease.lessee.clone(),
+            start_time: now,
+            end_time: new_end_time,
+            duration_seconds: old_lease.duration_seconds,
+            deposit_amount: old_lease.deposit_amount,
+            total_value: old_lease.total_value,
+            auto_renew: old_lease.auto_renew,
+            lessee_consent_for_renewal: false,
+            status: stellai_lib::LeaseState::Active,
+            pending_extension_id: None,
+        };
+        set_lease(&env, &new_lease);
+        lessee_leases_append(&env, &old_lease.lessee, new_lease_id);
+        lessor_leases_append(&env, &old_lease.lessor, new_lease_id);
+        // Deposit is retained as the new lease's deposit (no transfer)
+        let history_entry = stellai_lib::LeaseHistoryEntry {
+            lease_id,
+            action: String::from_str(&env, "renewed"),
+            actor: env.current_contract_address(),
+            timestamp: now,
+            details: None,
+        };
+        add_lease_history(&env, lease_id, &history_entry);
+        env.events().publish((Symbol::new(&env, "LeaseRenewed"),), (lease_id, new_lease_id, old_lease.lessee, new_end_time));
+        new_lease_id
+    }
+
+    pub fn set_lease_config(env: Env, admin: Address, deposit_bps: u32, early_termination_penalty_bps: u32) {
+        let current_admin: Address = env.storage().instance().get(&DataKey::Admin).expect("Contract not initialized");
+        admin.require_auth();
+        assert!(admin == current_admin, "Unauthorized");
+        assert!(deposit_bps <= 10_000, "deposit_bps max 10000");
+        assert!(early_termination_penalty_bps <= 10_000, "penalty_bps max 10000");
+        let config = storage::LeaseConfig { deposit_bps, early_termination_penalty_bps };
+        set_lease_config(&env, &config);
+    }
+
+    pub fn get_lease_by_id(env: Env, lease_id: u64) -> Option<stellai_lib::LeaseData> {
+        get_lease(&env, lease_id)
+    }
+
+    pub fn get_active_leases(env: Env, address: Address) -> Vec<stellai_lib::LeaseData> {
+        let lessee_ids = get_lessee_lease_ids(&env, &address);
+        let lessor_ids = get_lessor_lease_ids(&env, &address);
+        let mut out = Vec::new(&env);
+        for i in 0..lessee_ids.len() {
+            if let Some(id) = lessee_ids.get(i) {
+                if let Some(lease) = get_lease(&env, id) {
+                    if lease.status == stellai_lib::LeaseState::Active {
+                        out.push_back(lease);
+                    }
+                }
+            }
+        }
+        for i in 0..lessor_ids.len() {
+            if let Some(id) = lessor_ids.get(i) {
+                if let Some(lease) = get_lease(&env, id) {
+                    if lease.status != stellai_lib::LeaseState::Active {
+                        continue;
+                    }
+                    let mut found = false;
+                    for j in 0..out.len() {
+                        if let Some(existing) = out.get(j) {
+                            if existing.lease_id == lease.lease_id {
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                    if !found {
+                        out.push_back(lease);
+                    }
+                }
+            }
+        }
+        out
+    }
+
+    pub fn get_lease_history(env: Env, lease_id: u64) -> Vec<stellai_lib::LeaseHistoryEntry> {
+        let n = get_lease_history_count(&env, lease_id);
+        let mut out = Vec::new(&env);
+        for i in 0..n {
+            if let Some(entry) = get_lease_history_entry(&env, lease_id, i) {
+                out.push_back(entry);
+            }
+        }
+        out
+    }
 }
 
 #[cfg(test)]
 mod test_approval;
+#[cfg(test)]
+mod test_lease;
