@@ -2,14 +2,14 @@
 
 mod evolution_history;
 
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec, String};
-use stellai_lib::{
-    EvolutionRequest, EvolutionStatus, ADMIN_KEY, REQUEST_COUNTER_KEY,
-    audit::{create_audit_log, OperationType},
-};
 use evolution_history::{
-    append_evolution, get_evolution_history, get_evolution_count, get_evolution_at_index,
+    append_evolution, get_evolution_at_index, get_evolution_count, get_evolution_history,
     get_latest_evolution, EvolutionRecord,
+};
+use soroban_sdk::{contract, contractimpl, Address, Env, String, Symbol, Vec};
+use stellai_lib::{
+    audit::{create_audit_log, OperationType},
+    EvolutionRequest, EvolutionStatus, ADMIN_KEY, REQUEST_COUNTER_KEY,
 };
 
 #[contract]
@@ -81,7 +81,7 @@ impl Evolution {
         let after_state = String::from_str(&env, "{\"request_created\":true}");
         let tx_hash = String::from_str(&env, "create_request");
         let description = Some(String::from_str(&env, "Evolution request created"));
-        
+
         let _ = create_audit_log(
             &env,
             owner,
@@ -155,7 +155,7 @@ impl Evolution {
         let after_state = String::from_str(&env, "{\"status\":\"completed\"}");
         let tx_hash = String::from_str(&env, "execute_evolution");
         let description = Some(String::from_str(&env, "Evolution executed"));
-        
+
         let _ = create_audit_log(
             &env,
             admin,

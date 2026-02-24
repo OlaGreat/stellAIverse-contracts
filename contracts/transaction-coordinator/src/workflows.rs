@@ -1,8 +1,8 @@
-use soroban_sdk::{Address, Env, Symbol, Vec, String};
-use stellai_lib::{TransactionStep, AtomicTransaction, TransactionStatus};
+use soroban_sdk::{Address, Env, String, Symbol, Vec};
+use stellai_lib::{AtomicTransaction, TransactionStatus, TransactionStep};
 
 /// Atomic Agent Sale Workflow
-/// 
+///
 /// This workflow demonstrates how to create atomic transactions for complex
 /// multi-contract operations like agent sales that involve:
 /// 1. Marketplace listing validation
@@ -13,7 +13,7 @@ pub struct AtomicAgentSaleWorkflow;
 
 impl AtomicAgentSaleWorkflow {
     /// Create an atomic transaction for agent sale
-    /// 
+    ///
     /// This creates a multi-step transaction that ensures either all operations
     /// succeed or all are rolled back, preventing partial state inconsistencies.
     pub fn create_agent_sale_transaction(

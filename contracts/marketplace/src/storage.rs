@@ -1,4 +1,4 @@
-use soroban_sdk::{ Env, Address, contracttype, Vec, String };
+use soroban_sdk::{contracttype, Address, Env, String, Vec};
 
 #[derive(Clone)]
 #[contracttype]
@@ -40,7 +40,10 @@ pub fn set_payment_token(env: &Env, token: Address) {
 }
 
 pub fn get_payment_token(env: &Env) -> Address {
-    env.storage().instance().get(&DataKey::PaymentToken).unwrap()
+    env.storage()
+        .instance()
+        .get(&DataKey::PaymentToken)
+        .unwrap()
 }
 
 /* ---------------- ROYALTY ---------------- */
@@ -58,11 +61,16 @@ pub fn get_royalty_bps(env: &Env) -> u32 {
 /* ---------------- AUCTION ---------------- */
 
 pub fn set_auction_counter(env: &Env, counter: u64) {
-    env.storage().instance().set(&DataKey::AuctionCounter, &counter);
+    env.storage()
+        .instance()
+        .set(&DataKey::AuctionCounter, &counter);
 }
 
 pub fn get_auction_counter(env: &Env) -> u64 {
-    env.storage().instance().get(&DataKey::AuctionCounter).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::AuctionCounter)
+        .unwrap_or(0)
 }
 
 pub fn increment_auction_counter(env: &Env) -> u64 {
@@ -72,7 +80,9 @@ pub fn increment_auction_counter(env: &Env) -> u64 {
 }
 
 pub fn set_auction(env: &Env, auction: &stellai_lib::Auction) {
-    env.storage().instance().set(&DataKey::Auction(auction.auction_id), auction);
+    env.storage()
+        .instance()
+        .set(&DataKey::Auction(auction.auction_id), auction);
 }
 
 pub fn get_auction(env: &Env, auction_id: u64) -> Option<stellai_lib::Auction> {
@@ -89,7 +99,9 @@ pub fn calculate_royalty(price: i128, bps: u32) -> i128 {
 /* ---------------- APPROVAL ---------------- */
 
 pub fn set_approval_config(env: &Env, config: &stellai_lib::ApprovalConfig) {
-    env.storage().instance().set(&DataKey::ApprovalConfig, config);
+    env.storage()
+        .instance()
+        .set(&DataKey::ApprovalConfig, config);
 }
 
 pub fn get_approval_config(env: &Env) -> stellai_lib::ApprovalConfig {
@@ -105,11 +117,16 @@ pub fn get_approval_config(env: &Env) -> stellai_lib::ApprovalConfig {
 }
 
 pub fn get_approval_counter(env: &Env) -> u64 {
-    env.storage().instance().get(&DataKey::ApprovalCounter).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::ApprovalCounter)
+        .unwrap_or(0)
 }
 
 pub fn set_approval_counter(env: &Env, counter: u64) {
-    env.storage().instance().set(&DataKey::ApprovalCounter, &counter);
+    env.storage()
+        .instance()
+        .set(&DataKey::ApprovalCounter, &counter);
 }
 
 pub fn increment_approval_counter(env: &Env) -> u64 {
@@ -119,21 +136,32 @@ pub fn increment_approval_counter(env: &Env) -> u64 {
 }
 
 pub fn set_approval(env: &Env, approval: &stellai_lib::Approval) {
-    env.storage().instance().set(&DataKey::Approval(approval.approval_id), approval);
+    env.storage()
+        .instance()
+        .set(&DataKey::Approval(approval.approval_id), approval);
 }
 
 pub fn get_approval(env: &Env, approval_id: u64) -> Option<stellai_lib::Approval> {
-    env.storage().instance().get(&DataKey::Approval(approval_id))
+    env.storage()
+        .instance()
+        .get(&DataKey::Approval(approval_id))
 }
 
 pub fn add_approval_history(env: &Env, approval_id: u64, history: &stellai_lib::ApprovalHistory) {
     let history_index = get_approval_history_count(env, approval_id);
-    env.storage().instance().set(&DataKey::ApprovalHistory(approval_id, history_index), history);
+    env.storage().instance().set(
+        &DataKey::ApprovalHistory(approval_id, history_index),
+        history,
+    );
 }
 
 pub fn get_approval_history_count(env: &Env, approval_id: u64) -> u64 {
     let mut count = 0;
-    while env.storage().instance().has(&DataKey::ApprovalHistory(approval_id, count)) {
+    while env
+        .storage()
+        .instance()
+        .has(&DataKey::ApprovalHistory(approval_id, count))
+    {
         count += 1;
     }
     count
@@ -142,19 +170,29 @@ pub fn get_approval_history_count(env: &Env, approval_id: u64) -> u64 {
 pub fn get_approval_history(
     env: &Env,
     approval_id: u64,
-    index: u64
+    index: u64,
 ) -> Option<stellai_lib::ApprovalHistory> {
-    env.storage().instance().get(&DataKey::ApprovalHistory(approval_id, index))
+    env.storage()
+        .instance()
+        .get(&DataKey::ApprovalHistory(approval_id, index))
 }
 
 #[allow(dead_code)]
 pub fn delete_approval(env: &Env, approval_id: u64) {
-    env.storage().instance().remove(&DataKey::Approval(approval_id));
+    env.storage()
+        .instance()
+        .remove(&DataKey::Approval(approval_id));
 
     // Clean up approval history
     let mut history_index = 0;
-    while env.storage().instance().has(&DataKey::ApprovalHistory(approval_id, history_index)) {
-        env.storage().instance().remove(&DataKey::ApprovalHistory(approval_id, history_index));
+    while env
+        .storage()
+        .instance()
+        .has(&DataKey::ApprovalHistory(approval_id, history_index))
+    {
+        env.storage()
+            .instance()
+            .remove(&DataKey::ApprovalHistory(approval_id, history_index));
         history_index += 1;
     }
 }
@@ -175,9 +213,9 @@ pub struct FeeAdjustmentParams {
 #[derive(Clone)]
 #[contracttype]
 pub struct FeeCalculationInput {
-    pub network_congestion: i128,    // 0-100
+    pub network_congestion: i128,   // 0-100
     pub platform_utilization: i128, // 0-100
-    pub market_volatility: i128,     // 0-100
+    pub market_volatility: i128,    // 0-100
 }
 
 #[derive(Clone)]
@@ -215,7 +253,9 @@ pub struct FeeTransitionState {
 }
 
 pub fn set_fee_adjustment_params(env: &Env, params: &FeeAdjustmentParams) {
-    env.storage().instance().set(&DataKey::FeeAdjustmentParams, params);
+    env.storage()
+        .instance()
+        .set(&DataKey::FeeAdjustmentParams, params);
 }
 
 pub fn get_fee_adjustment_params(env: &Env) -> Option<FeeAdjustmentParams> {
@@ -223,7 +263,9 @@ pub fn get_fee_adjustment_params(env: &Env) -> Option<FeeAdjustmentParams> {
 }
 
 pub fn set_current_fee_structure(env: &Env, fee_structure: &FeeStructure) {
-    env.storage().instance().set(&DataKey::CurrentFeeStructure, fee_structure);
+    env.storage()
+        .instance()
+        .set(&DataKey::CurrentFeeStructure, fee_structure);
 }
 
 pub fn get_current_fee_structure(env: &Env) -> Option<FeeStructure> {
@@ -231,41 +273,63 @@ pub fn get_current_fee_structure(env: &Env) -> Option<FeeStructure> {
 }
 
 pub fn get_fee_adjustment_counter(env: &Env) -> u64 {
-    env.storage().instance().get(&DataKey::FeeAdjustmentCounter).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::FeeAdjustmentCounter)
+        .unwrap_or(0)
 }
 
 pub fn increment_fee_adjustment_counter(env: &Env) -> u64 {
     let counter = get_fee_adjustment_counter(env) + 1;
-    env.storage().instance().set(&DataKey::FeeAdjustmentCounter, &counter);
+    env.storage()
+        .instance()
+        .set(&DataKey::FeeAdjustmentCounter, &counter);
     counter
 }
 
 pub fn add_fee_adjustment_history(env: &Env, history: &FeeAdjustmentHistory) {
-    env.storage().instance().set(&DataKey::FeeAdjustmentHistory(history.adjustment_id), history);
+    env.storage().instance().set(
+        &DataKey::FeeAdjustmentHistory(history.adjustment_id),
+        history,
+    );
 }
 
 pub fn get_fee_adjustment_history(env: &Env, adjustment_id: u64) -> Option<FeeAdjustmentHistory> {
-    env.storage().instance().get(&DataKey::FeeAdjustmentHistory(adjustment_id))
+    env.storage()
+        .instance()
+        .get(&DataKey::FeeAdjustmentHistory(adjustment_id))
 }
 
 pub fn set_oracle_subscriptions(env: &Env, oracle_ids: &Vec<Address>) {
-    env.storage().instance().set(&DataKey::OracleSubscriptions, oracle_ids);
+    env.storage()
+        .instance()
+        .set(&DataKey::OracleSubscriptions, oracle_ids);
 }
 
 pub fn get_oracle_subscriptions(env: &Env) -> Vec<Address> {
-    env.storage().instance().get(&DataKey::OracleSubscriptions).unwrap_or_else(|| Vec::new(env))
+    env.storage()
+        .instance()
+        .get(&DataKey::OracleSubscriptions)
+        .unwrap_or_else(|| Vec::new(env))
 }
 
 pub fn set_last_oracle_update(env: &Env, timestamp: u64) {
-    env.storage().instance().set(&DataKey::LastOracleUpdate, &timestamp);
+    env.storage()
+        .instance()
+        .set(&DataKey::LastOracleUpdate, &timestamp);
 }
 
 pub fn get_last_oracle_update(env: &Env) -> u64 {
-    env.storage().instance().get(&DataKey::LastOracleUpdate).unwrap_or(0)
+    env.storage()
+        .instance()
+        .get(&DataKey::LastOracleUpdate)
+        .unwrap_or(0)
 }
 
 pub fn set_fee_transition_state(env: &Env, state: &FeeTransitionState) {
-    env.storage().instance().set(&DataKey::FeeTransitionState, state);
+    env.storage()
+        .instance()
+        .set(&DataKey::FeeTransitionState, state);
 }
 
 pub fn get_fee_transition_state(env: &Env) -> Option<FeeTransitionState> {

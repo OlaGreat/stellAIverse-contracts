@@ -3,8 +3,8 @@
 use crate::{Oracle, OracleClient, RelayRequest};
 use ed25519_dalek::SigningKey;
 use soroban_sdk::testutils::Address as _;
-use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Symbol, Val, Vec};
 use soroban_sdk::xdr::{self, Limited, Limits, WriteXdr};
+use soroban_sdk::{contract, contractimpl, symbol_short, Address, BytesN, Env, Symbol, Val, Vec};
 
 #[contract]
 pub struct Receiver;
@@ -44,14 +44,22 @@ fn build_signed_payload(
 
     let scval: xdr::ScVal = req.try_into().unwrap();
     let mut buf: std::vec::Vec<u8> = std::vec::Vec::new();
-    scval.write_xdr(&mut Limited::new(&mut buf, Limits::none()))
+    scval
+        .write_xdr(&mut Limited::new(&mut buf, Limits::none()))
         .unwrap();
 
     let sig = signing_key.sign(&buf);
     BytesN::from_array(env, &sig.to_bytes())
 }
 
-fn setup() -> (Env, OracleClient<'static>, Address, BytesN<32>, SigningKey, Address) {
+fn setup() -> (
+    Env,
+    OracleClient<'static>,
+    Address,
+    BytesN<32>,
+    SigningKey,
+    Address,
+) {
     let env = Env::default();
     env.mock_all_auths();
 
@@ -90,16 +98,21 @@ fn test_relay_signed_success_forwards_payload() {
         &sk,
     );
 
-    let res = oracle.relay_signed(&pk, &receiver_id, &function, &args, &nonce, &deadline, &signature);
+    let res = oracle.relay_signed(
+        &pk,
+        &receiver_id,
+        &function,
+        &args,
+        &nonce,
+        &deadline,
+        &signature,
+    );
     let res_u32: u32 = res.try_into_val(&env).unwrap();
     assert_eq!(res_u32, 124);
 
     // Verify target contract state updated
-    let last: Option<u32> = env.invoke_contract(
-        &receiver_id,
-        &Symbol::new(&env, "last"),
-        Vec::new(&env),
-    );
+    let last: Option<u32> =
+        env.invoke_contract(&receiver_id, &Symbol::new(&env, "last"), Vec::new(&env));
     assert_eq!(last, Some(123));
 }
 
@@ -124,7 +137,15 @@ fn test_relay_signed_rejects_unapproved_oracle() {
         &sk,
     );
 
-    oracle.relay_signed(&pk, &receiver_id, &function, &args, &nonce, &deadline, &signature);
+    oracle.relay_signed(
+        &pk,
+        &receiver_id,
+        &function,
+        &args,
+        &nonce,
+        &deadline,
+        &signature,
+    );
 }
 
 #[test]
@@ -140,7 +161,15 @@ fn test_relay_signed_rejects_bad_signature() {
 
     // Wrong signature
     let signature = BytesN::from_array(&env, &[0u8; 64]);
-    oracle.relay_signed(&pk, &receiver_id, &function, &args, &nonce, &deadline, &signature);
+    oracle.relay_signed(
+        &pk,
+        &receiver_id,
+        &function,
+        &args,
+        &nonce,
+        &deadline,
+        &signature,
+    );
 }
 
 #[test]
@@ -165,8 +194,24 @@ fn test_relay_signed_prevents_replay() {
         &sk,
     );
 
-    oracle.relay_signed(&pk, &receiver_id, &function, &args, &nonce, &deadline, &signature);
-    oracle.relay_signed(&pk, &receiver_id, &function, &args, &nonce, &deadline, &signature);
+    oracle.relay_signed(
+        &pk,
+        &receiver_id,
+        &function,
+        &args,
+        &nonce,
+        &deadline,
+        &signature,
+    );
+    oracle.relay_signed(
+        &pk,
+        &receiver_id,
+        &function,
+        &args,
+        &nonce,
+        &deadline,
+        &signature,
+    );
 }
 
 #[test]
@@ -193,5 +238,13 @@ fn test_relay_signed_rejects_expired_deadline() {
 
     // Move ledger time forward
     env.ledger().set_timestamp(deadline + 1);
-    oracle.relay_signed(&pk, &receiver_id, &function, &args, &nonce, &deadline, &signature);
+    oracle.relay_signed(
+        &pk,
+        &receiver_id,
+        &function,
+        &args,
+        &nonce,
+        &deadline,
+        &signature,
+    );
 }

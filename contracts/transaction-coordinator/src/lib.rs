@@ -1,19 +1,18 @@
 #![no_std]
 
-mod workflows;
-#[cfg(test)]
-mod test;
 #[cfg(test)]
 mod integration_test;
+#[cfg(test)]
+mod test;
+mod workflows;
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, contracterror, symbol_short, Address, Env, String, Symbol, Vec,
-    panic_with_error,
+    contract, contracterror, contractimpl, contracttype, panic_with_error, symbol_short, Address,
+    Env, String, Symbol, Vec,
 };
 use stellai_lib::{
-    AtomicTransaction, TransactionStep, TransactionStatus, TransactionJournalEntry, TransactionEvent,
-    atomic::{AtomicTransactionUtils},
-    TRANSACTION_TIMEOUT_SECONDS, MAX_TRANSACTION_STEPS,
+    atomic::AtomicTransactionUtils, AtomicTransaction, TransactionEvent, TransactionJournalEntry,
+    TransactionStatus, TransactionStep, MAX_TRANSACTION_STEPS, TRANSACTION_TIMEOUT_SECONDS,
 };
 
 pub use workflows::AtomicAgentSaleWorkflow;
@@ -24,7 +23,7 @@ pub enum DataKey {
     Admin,
     TransactionCounter,
     Transaction(u64),
-    Journal(u64, u32), // (transaction_id, step_id)
+    Journal(u64, u32),  // (transaction_id, step_id)
     PreparedSteps(u64), // Track prepared steps per transaction
 }
 
@@ -58,17 +57,15 @@ impl TransactionCoordinator {
 
         admin.require_auth();
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::TransactionCounter, &0u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::TransactionCounter, &0u64);
 
         env.events().publish((symbol_short!("init"),), admin);
     }
 
     /// Create a new atomic transaction
-    pub fn create_transaction(
-        env: Env,
-        initiator: Address,
-        steps: Vec<TransactionStep>,
-    ) -> u64 {
+    pub fn create_transaction(env: Env, initiator: Address, steps: Vec<TransactionStep>) -> u64 {
         initiator.require_auth();
 
         if steps.len() == 0 || steps.len() > MAX_TRANSACTION_STEPS as u32 {
@@ -76,7 +73,9 @@ impl TransactionCoordinator {
         }
 
         // Generate transaction ID
-        let counter: u64 = env.storage().instance()
+        let counter: u64 = env
+            .storage()
+            .instance()
             .get(&DataKey::TransactionCounter)
             .unwrap_or(0);
         let transaction_id = counter + 1;
@@ -101,24 +100,24 @@ impl TransactionCoordinator {
         }
 
         // Store transaction
-        env.storage().instance().set(&DataKey::Transaction(transaction_id), &transaction);
-        env.storage().instance().set(&DataKey::TransactionCounter, &transaction_id);
+        env.storage()
+            .instance()
+            .set(&DataKey::Transaction(transaction_id), &transaction);
+        env.storage()
+            .instance()
+            .set(&DataKey::TransactionCounter, &transaction_id);
 
         // Initialize prepared steps tracking
-        env.storage().instance().set(&DataKey::PreparedSteps(transaction_id), &Vec::<u32>::new(&env));
+        env.storage().instance().set(
+            &DataKey::PreparedSteps(transaction_id),
+            &Vec::<u32>::new(&env),
+        );
 
         // Emit event
         Self::emit_transaction_event(&env, transaction_id, "initiated", None, None);
 
         // Create journal entry
-        Self::create_journal_entry(
-            &env,
-            transaction_id,
-            0,
-            "transaction_created",
-            true,
-            None,
-        );
+        Self::create_journal_entry(&env, transaction_id, 0, "transaction_created", true, None);
 
         transaction_id
     }
@@ -127,7 +126,9 @@ impl TransactionCoordinator {
     pub fn execute_transaction(env: Env, transaction_id: u64, executor: Address) -> bool {
         executor.require_auth();
 
-        let mut transaction: AtomicTransaction = env.storage().instance()
+        let mut transaction: AtomicTransaction = env
+            .storage()
+            .instance()
             .get(&DataKey::Transaction(transaction_id))
             .unwrap_or_else(|| panic_with_error!(&env, Error::TransactionNotFound));
 
@@ -139,20 +140,27 @@ impl TransactionCoordinator {
         // Check timeout
         if AtomicTransactionUtils::is_transaction_timed_out(&env, &transaction) {
             transaction.status = TransactionStatus::TimedOut;
-            env.storage().instance().set(&DataKey::Transaction(transaction_id), &transaction);
+            env.storage()
+                .instance()
+                .set(&DataKey::Transaction(transaction_id), &transaction);
             Self::emit_transaction_event(&env, transaction_id, "timed_out", None, None);
             return false;
         }
 
         // Phase 1: Prepare all steps
         transaction.status = TransactionStatus::Preparing;
-        env.storage().instance().set(&DataKey::Transaction(transaction_id), &transaction);
+        env.storage()
+            .instance()
+            .set(&DataKey::Transaction(transaction_id), &transaction);
 
-        let execution_order = AtomicTransactionUtils::resolve_execution_order(&env, &transaction.steps);
+        let execution_order =
+            AtomicTransactionUtils::resolve_execution_order(&env, &transaction.steps);
         let mut prepared_steps = Vec::new(&env);
 
         for step_id in execution_order.iter() {
-            let step = transaction.steps.iter()
+            let step = transaction
+                .steps
+                .iter()
                 .find(|s| s.step_id == step_id)
                 .unwrap();
 
@@ -173,12 +181,25 @@ impl TransactionCoordinator {
 
             // Prepare step
             let prepare_success = Self::prepare_step(&env, transaction_id, &step);
-            
+
             if prepare_success {
                 prepared_steps.push_back(step_id);
-                Self::emit_transaction_event(&env, transaction_id, "step_prepared", Some(step_id), None);
+                Self::emit_transaction_event(
+                    &env,
+                    transaction_id,
+                    "step_prepared",
+                    Some(step_id),
+                    None,
+                );
             } else {
-                Self::create_journal_entry(&env, transaction_id, step_id, "prepare_failed", false, Some("Step preparation failed"));
+                Self::create_journal_entry(
+                    &env,
+                    transaction_id,
+                    step_id,
+                    "prepare_failed",
+                    false,
+                    Some("Step preparation failed"),
+                );
                 Self::rollback_transaction(&env, transaction_id, &prepared_steps);
                 return false;
             }
@@ -187,26 +208,45 @@ impl TransactionCoordinator {
         // All steps prepared successfully
         transaction.status = TransactionStatus::Prepared;
         transaction.prepared_steps = prepared_steps.clone();
-        env.storage().instance().set(&DataKey::Transaction(transaction_id), &transaction);
+        env.storage()
+            .instance()
+            .set(&DataKey::Transaction(transaction_id), &transaction);
 
         // Phase 2: Commit all steps
         transaction.status = TransactionStatus::Committing;
-        env.storage().instance().set(&DataKey::Transaction(transaction_id), &transaction);
+        env.storage()
+            .instance()
+            .set(&DataKey::Transaction(transaction_id), &transaction);
 
         let mut executed_steps = Vec::new(&env);
 
         for step_id in execution_order.iter() {
-            let step = transaction.steps.iter()
+            let step = transaction
+                .steps
+                .iter()
                 .find(|s| s.step_id == step_id)
                 .unwrap();
 
             let commit_success = Self::commit_step(&env, transaction_id, &step);
-            
+
             if commit_success {
                 executed_steps.push_back(step_id);
-                Self::emit_transaction_event(&env, transaction_id, "step_committed", Some(step_id), None);
+                Self::emit_transaction_event(
+                    &env,
+                    transaction_id,
+                    "step_committed",
+                    Some(step_id),
+                    None,
+                );
             } else {
-                Self::create_journal_entry(&env, transaction_id, step_id, "commit_failed", false, Some("Step commit failed"));
+                Self::create_journal_entry(
+                    &env,
+                    transaction_id,
+                    step_id,
+                    "commit_failed",
+                    false,
+                    Some("Step commit failed"),
+                );
                 Self::rollback_transaction(&env, transaction_id, &executed_steps);
                 return false;
             }
@@ -215,7 +255,9 @@ impl TransactionCoordinator {
         // Transaction completed successfully
         transaction.status = TransactionStatus::Committed;
         transaction.executed_steps = executed_steps;
-        env.storage().instance().set(&DataKey::Transaction(transaction_id), &transaction);
+        env.storage()
+            .instance()
+            .set(&DataKey::Transaction(transaction_id), &transaction);
 
         Self::emit_transaction_event(&env, transaction_id, "completed", None, None);
         Self::create_journal_entry(&env, transaction_id, 0, "transaction_completed", true, None);
@@ -225,12 +267,15 @@ impl TransactionCoordinator {
 
     /// Get transaction details
     pub fn get_transaction(env: Env, transaction_id: u64) -> Option<AtomicTransaction> {
-        env.storage().instance().get(&DataKey::Transaction(transaction_id))
+        env.storage()
+            .instance()
+            .get(&DataKey::Transaction(transaction_id))
     }
 
     /// Get transaction status
     pub fn get_transaction_status(env: Env, transaction_id: u64) -> Option<TransactionStatus> {
-        env.storage().instance()
+        env.storage()
+            .instance()
             .get::<DataKey, AtomicTransaction>(&DataKey::Transaction(transaction_id))
             .map(|tx| tx.status)
     }
@@ -253,25 +298,31 @@ impl TransactionCoordinator {
 
     /// Rollback transaction by undoing executed steps in reverse order
     fn rollback_transaction(env: &Env, transaction_id: u64, executed_steps: &Vec<u32>) -> bool {
-        let mut transaction: AtomicTransaction = env.storage().instance()
+        let mut transaction: AtomicTransaction = env
+            .storage()
+            .instance()
             .get(&DataKey::Transaction(transaction_id))
             .unwrap();
 
         transaction.status = TransactionStatus::RollingBack;
-        env.storage().instance().set(&DataKey::Transaction(transaction_id), &transaction);
+        env.storage()
+            .instance()
+            .set(&DataKey::Transaction(transaction_id), &transaction);
 
         let rollback_success = true;
 
         // Rollback in reverse order
         for i in (0..executed_steps.len()).rev() {
             let step_id = executed_steps.get(i).unwrap();
-            let step = transaction.steps.iter()
+            let step = transaction
+                .steps
+                .iter()
                 .find(|s| s.step_id == step_id)
                 .unwrap();
 
-            if let (Some(_rollback_contract), Some(_rollback_function)) = 
-                (&step.rollback_contract, &step.rollback_function) {
-                
+            if let (Some(_rollback_contract), Some(_rollback_function)) =
+                (&step.rollback_contract, &step.rollback_function)
+            {
                 // For now, just log the rollback attempt
                 // In a real implementation, this would invoke the rollback contract
                 Self::create_journal_entry(env, transaction_id, step_id, "rollback", true, None);
@@ -284,7 +335,9 @@ impl TransactionCoordinator {
             TransactionStatus::Failed
         };
 
-        env.storage().instance().set(&DataKey::Transaction(transaction_id), &transaction);
+        env.storage()
+            .instance()
+            .set(&DataKey::Transaction(transaction_id), &transaction);
         Self::emit_transaction_event(env, transaction_id, "rolled_back", None, None);
 
         rollback_success
@@ -309,7 +362,9 @@ impl TransactionCoordinator {
             state_snapshot: None,
         };
 
-        env.storage().instance().set(&DataKey::Journal(transaction_id, step_id), &entry);
+        env.storage()
+            .instance()
+            .set(&DataKey::Journal(transaction_id, step_id), &entry);
     }
 
     /// Emit transaction event
@@ -337,21 +392,23 @@ impl TransactionCoordinator {
     /// Get transaction journal for audit
     pub fn get_transaction_journal(env: Env, _transaction_id: u64) -> Vec<TransactionJournalEntry> {
         let journal = Vec::new(&env);
-        
+
         // This is a simplified version - in practice, you'd iterate through stored journal entries
         // For now, return empty vector as journal entries are stored but not easily queryable
-        
+
         journal
     }
 
     /// Clean up expired transactions (admin only)
     pub fn cleanup_expired_transactions(env: Env, admin: Address, _max_cleanup: u32) -> u32 {
         admin.require_auth();
-        
-        let stored_admin: Address = env.storage().instance()
+
+        let stored_admin: Address = env
+            .storage()
+            .instance()
             .get(&DataKey::Admin)
             .unwrap_or_else(|| panic_with_error!(&env, Error::NotInitialized));
-        
+
         if admin != stored_admin {
             panic_with_error!(&env, Error::Unauthorized);
         }

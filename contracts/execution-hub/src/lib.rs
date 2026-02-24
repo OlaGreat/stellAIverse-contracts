@@ -1,7 +1,8 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, String, Vec, Symbol, IntoVal,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, IntoVal, String,
+    Symbol, Vec,
 };
 use stellai_lib::{
     ADMIN_KEY, DEFAULT_RATE_LIMIT_OPERATIONS, DEFAULT_RATE_LIMIT_WINDOW_SECONDS, EXEC_CTR_KEY,
@@ -23,7 +24,6 @@ pub struct OperatorData {
 }
 
 const AGENT_NFT_KEY: &str = "agent_nft";
-
 
 #[derive(Clone)]
 #[contracttype]
@@ -72,10 +72,13 @@ impl ExecutionHub {
 
         admin.require_auth();
         env.storage().instance().set(&ADMIN_KEY, &admin);
-        env.storage().instance().set(&Symbol::new(&env, AGENT_NFT_KEY), &agent_nft);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, AGENT_NFT_KEY), &agent_nft);
         env.storage().instance().set(&EXEC_CTR_KEY, &0u64);
 
-        env.events().publish((symbol_short!("init"),), (admin, agent_nft));
+        env.events()
+            .publish((symbol_short!("init"),), (admin, agent_nft));
     }
 
     // Get current execution counter
@@ -150,7 +153,7 @@ impl ExecutionHub {
         // Verify owner via AgentNFT
         let actual_owner = Self::get_agent_owner(&env, agent_id);
         if owner != actual_owner {
-             panic!("Unauthorized: caller is not agent owner");
+            panic!("Unauthorized: caller is not agent owner");
         }
 
         let expires_at = env.ledger().timestamp() + duration_seconds;
@@ -177,17 +180,15 @@ impl ExecutionHub {
         // Verify owner via AgentNFT
         let actual_owner = Self::get_agent_owner(&env, agent_id);
         if owner != actual_owner {
-             panic!("Unauthorized: caller is not agent owner");
+            panic!("Unauthorized: caller is not agent owner");
         }
 
         let op_key = symbol_short!("op");
         let agent_op_key = (op_key, agent_id);
         env.storage().instance().remove(&agent_op_key);
 
-        env.events().publish(
-            (symbol_short!("rev_op"),),
-            (agent_id, owner),
-        );
+        env.events()
+            .publish((symbol_short!("rev_op"),), (agent_id, owner));
     }
 
     // Get rule data
@@ -224,7 +225,7 @@ impl ExecutionHub {
         executor.require_auth();
 
         Self::validate_agent_id(agent_id);
-        
+
         // Permission Check: Owner or Authorized Operator
         // 1. Check if executor is owner
         let owner = Self::get_agent_owner(&env, agent_id);
@@ -234,7 +235,11 @@ impl ExecutionHub {
         if !is_owner {
             let op_key = symbol_short!("op");
             let agent_op_key = (op_key, agent_id);
-            if let Some(op_data) = env.storage().instance().get::<_, OperatorData>(&agent_op_key) {
+            if let Some(op_data) = env
+                .storage()
+                .instance()
+                .get::<_, OperatorData>(&agent_op_key)
+            {
                 if op_data.operator != executor {
                     panic!("Unauthorized: executor is not owner or operator");
                 }
@@ -242,7 +247,7 @@ impl ExecutionHub {
                     panic!("Unauthorized: operator authorization expired");
                 }
             } else {
-                 panic!("Unauthorized: executor is not owner or operator");
+                panic!("Unauthorized: executor is not owner or operator");
             }
         }
         Self::validate_string_length(&action, "Action name");
@@ -578,7 +583,7 @@ impl ExecutionHub {
             .instance()
             .get(&Symbol::new(env, AGENT_NFT_KEY))
             .expect("AgentNFT contract not set");
-        
+
         // Call AgentNFT.get_agent_owner(agent_id)
         env.invoke_contract(
             &agent_nft_addr,
@@ -591,8 +596,8 @@ impl ExecutionHub {
 #[cfg(test)]
 mod test {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
     use soroban_sdk::testutils::Ledger;
+    use soroban_sdk::{testutils::Address as _, Env};
 
     // Mock AgentNFT contract for testing cross-contract calls
     #[contract]
@@ -601,15 +606,24 @@ mod test {
     #[contractimpl]
     impl MockAgentNFT {
         pub fn get_agent_owner(env: Env, agent_id: u64) -> Address {
-            env.storage().instance().get(&agent_id).expect("Agent not found in mock")
+            env.storage()
+                .instance()
+                .get(&agent_id)
+                .expect("Agent not found in mock")
         }
-        
+
         pub fn set_owner(env: Env, agent_id: u64, owner: Address) {
             env.storage().instance().set(&agent_id, &owner);
         }
     }
 
-    fn setup_test() -> (Env, ExecutionHubClient<'static>, Address, MockAgentNFTClient<'static>, Address) {
+    fn setup_test() -> (
+        Env,
+        ExecutionHubClient<'static>,
+        Address,
+        MockAgentNFTClient<'static>,
+        Address,
+    ) {
         let env = Env::default();
         env.mock_all_auths();
 
@@ -620,7 +634,7 @@ mod test {
         let agent_nft_client = MockAgentNFTClient::new(&env, &agent_nft_id);
 
         let admin = Address::generate(&env);
-        
+
         // Initialize with agent nft address
         client.initialize(&admin, &agent_nft_id);
 
@@ -633,7 +647,7 @@ mod test {
 
         assert_eq!(client.get_admin(), admin);
         assert_eq!(client.get_execution_counter(), 0);
-        
+
         // Check if agent nft address is stored correctly is implicit via get_agent_owner working later
     }
 
@@ -648,7 +662,7 @@ mod test {
     fn test_execution_counter_increment() {
         let (env, client, _admin, agent_nft, _) = setup_test();
         let executor = Address::generate(&env);
-        
+
         // Set executor as owner of agent 1
         agent_nft.set_owner(&1, &executor);
 
@@ -671,7 +685,7 @@ mod test {
         let (env, client, _admin, agent_nft, _) = setup_test();
         let owner = Address::generate(&env);
         let other = Address::generate(&env);
-        
+
         // Set owner for agent 1
         agent_nft.set_owner(&1, &owner);
 
@@ -684,19 +698,19 @@ mod test {
 
         // 2. Non-owner cannot execute
         // We expect panic here. Since we can't easily catch panic in the middle of a test without helper,
-        // we'll rely on separate tests or use verify_executed pattern if available. 
+        // we'll rely on separate tests or use verify_executed pattern if available.
         // For now, let's just test success cases and create a separate test for failure.
     }
-    
+
     #[test]
     #[should_panic(expected = "Unauthorized: executor is not owner or operator")]
     fn test_unauthorized_execution() {
         let (env, client, _admin, agent_nft, _) = setup_test();
         let owner = Address::generate(&env);
         let other = Address::generate(&env);
-        
+
         agent_nft.set_owner(&1, &owner);
-        
+
         let action = String::from_str(&env, "test");
         let params = Bytes::from_array(&env, &[1]);
         let exec_hash = Bytes::from_array(&env, &[0xaa]);
@@ -710,9 +724,9 @@ mod test {
         let (env, client, _admin, agent_nft, _) = setup_test();
         let owner = Address::generate(&env);
         let operator = Address::generate(&env);
-        
+
         agent_nft.set_owner(&1, &owner);
-        
+
         // Authorize operator for 100 seconds
         client.authorize_operator(&1, &owner, &operator, &100);
 
@@ -722,10 +736,10 @@ mod test {
 
         // Operator executes
         client.execute_action(&1, &operator, &action, &params, &1, &exec_hash);
-        
+
         // Revoke
         client.revoke_operator(&1, &owner);
-        
+
         // Should fail now (need separate test for panic)
     }
 
@@ -735,7 +749,7 @@ mod test {
         let (env, client, _admin, agent_nft, _) = setup_test();
         let owner = Address::generate(&env);
         let operator = Address::generate(&env);
-        
+
         agent_nft.set_owner(&1, &owner);
         client.authorize_operator(&1, &owner, &operator, &100);
         client.revoke_operator(&1, &owner);
@@ -753,12 +767,12 @@ mod test {
         let (env, client, _admin, agent_nft, _) = setup_test();
         let owner = Address::generate(&env);
         let operator = Address::generate(&env);
-        
+
         agent_nft.set_owner(&1, &owner);
-        
+
         // Authorize for 10 seconds
         client.authorize_operator(&1, &owner, &operator, &10);
-        
+
         // Advance time by 20 seconds
         env.ledger().set_timestamp(env.ledger().timestamp() + 20);
 

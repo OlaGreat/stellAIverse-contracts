@@ -1,6 +1,6 @@
 #![no_std]
 
-use soroban_sdk::{Address, Env, Symbol, Vec, Val, contracttype, String};
+use soroban_sdk::{contracttype, Address, Env, String, Symbol, Val, Vec};
 
 use stellai_lib::atomic::AtomicTransactionSupport;
 
@@ -32,7 +32,7 @@ impl AtomicTransactionSupport for MarketplaceAtomicSupport {
             executed: false,
             result: None,
         };
-        
+
         let key = (Symbol::new(env, "atomic_step"), transaction_id, step_id);
         env.storage().instance().set(&key, &state);
         true
@@ -51,7 +51,7 @@ impl AtomicTransactionSupport for MarketplaceAtomicSupport {
             state.executed = true;
             env.storage().instance().set(&key, &state);
         }
-        
+
         true.into()
     }
 

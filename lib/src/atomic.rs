@@ -1,5 +1,5 @@
-use soroban_sdk::{Env, Symbol, Vec, Val, String};
-use crate::{AtomicTransaction, TransactionStep, TransactionJournalEntry};
+use crate::{AtomicTransaction, TransactionJournalEntry, TransactionStep};
+use soroban_sdk::{Env, String, Symbol, Val, Vec};
 
 /// Trait for contracts that support atomic transactions
 pub trait AtomicTransactionSupport {
@@ -60,7 +60,7 @@ impl AtomicTransactionUtils {
                 if depends_on >= step.step_id {
                     return Err("Invalid dependency: step cannot depend on itself or later steps");
                 }
-                
+
                 // Verify dependency exists
                 if !transaction.steps.iter().any(|s| s.step_id == depends_on) {
                     return Err("Dependency step not found");
@@ -75,7 +75,7 @@ impl AtomicTransactionUtils {
     pub fn resolve_execution_order(env: &Env, steps: &Vec<TransactionStep>) -> Vec<u32> {
         let mut ordered_steps = Vec::new(env);
         let mut remaining_steps = Vec::new(env);
-        
+
         // Copy steps to remaining_steps
         for step in steps.iter() {
             remaining_steps.push_back(step.clone());
@@ -83,7 +83,7 @@ impl AtomicTransactionUtils {
 
         while !remaining_steps.is_empty() {
             let mut progress = false;
-            
+
             // Find steps with no unresolved dependencies
             let mut i = 0;
             while i < remaining_steps.len() {
@@ -99,7 +99,7 @@ impl AtomicTransactionUtils {
                             }
                         }
                         found
-                    },
+                    }
                 };
 
                 if can_execute {

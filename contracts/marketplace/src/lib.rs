@@ -1,27 +1,18 @@
 #![no_std]
 
-mod storage;
 mod atomic;
+mod storage;
 
-use soroban_sdk::{ contract, contractimpl, token, Address, Env, Symbol, Vec, String, Val };
+use soroban_sdk::{contract, contractimpl, token, Address, Env, String, Symbol, Val, Vec};
 use stellai_lib::{
-    Listing,
-    ListingType,
-    RoyaltyInfo,
-    LISTING_COUNTER_KEY,
-    Auction,
-    AuctionType,
-    AuctionStatus,
-    ApprovalConfig,
-    Approval,
-    ApprovalStatus,
-    ApprovalHistory,
     atomic::AtomicTransactionSupport,
     audit::{create_audit_log, OperationType},
+    Approval, ApprovalConfig, ApprovalHistory, ApprovalStatus, Auction, AuctionStatus, AuctionType,
+    Listing, ListingType, RoyaltyInfo, LISTING_COUNTER_KEY,
 };
 
-use storage::*;
 use atomic::MarketplaceAtomicSupport;
+use storage::*;
 
 #[contract]
 pub struct Marketplace;
@@ -37,7 +28,9 @@ impl Marketplace {
         admin.require_auth();
         set_admin(&env, &admin);
 
-        env.storage().instance().set(&Symbol::new(&env, LISTING_COUNTER_KEY), &0u64);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, LISTING_COUNTER_KEY), &0u64);
     }
 
     /// Set a new admin
@@ -70,7 +63,7 @@ impl Marketplace {
         agent_id: u64,
         seller: Address,
         listing_type: u32,
-        price: i128
+        price: i128,
     ) -> u64 {
         seller.require_auth();
 
@@ -112,11 +105,13 @@ impl Marketplace {
         env.storage().instance().set(&listing_key, &listing);
 
         // Update counter
-        env.storage().instance().set(&Symbol::new(&env, LISTING_COUNTER_KEY), &listing_id);
+        env.storage()
+            .instance()
+            .set(&Symbol::new(&env, LISTING_COUNTER_KEY), &listing_id);
 
         env.events().publish(
             (Symbol::new(&env, "listing_created"),),
-            (listing_id, agent_id, seller.clone(), price)
+            (listing_id, agent_id, seller.clone(), price),
         );
 
         // Log audit entry for sale created
@@ -124,7 +119,7 @@ impl Marketplace {
         let after_state = String::from_str(&env, "{\"listing_created\":true}");
         let tx_hash = String::from_str(&env, "create_listing");
         let description = Some(String::from_str(&env, "Marketplace listing created"));
-        
+
         let _ = create_audit_log(
             &env,
             seller,
@@ -173,12 +168,12 @@ impl Marketplace {
 
         // Transfer payment
         let token_client = token::Client::new(&env, &get_payment_token(&env));
-        
+
         // Transfer marketplace fee to contract
         if marketplace_fee > 0 {
             token_client.transfer(&buyer, &env.current_contract_address(), &marketplace_fee);
         }
-        
+
         // Transfer remaining amount to seller
         token_client.transfer(&buyer, &listing.seller, &seller_amount);
 
@@ -188,7 +183,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "agent_sold"),),
-            (listing_id, listing.agent_id, buyer, marketplace_fee_bps)
+            (listing_id, listing.agent_id, buyer, marketplace_fee_bps),
         );
     }
 
@@ -216,7 +211,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "listing_cancelled"),),
-            (listing_id, listing.agent_id, seller)
+            (listing_id, listing.agent_id, seller),
         );
     }
 
@@ -247,7 +242,8 @@ impl Marketplace {
         let royalty_key = (Symbol::new(&env, "royalty"), agent_id);
         env.storage().instance().set(&royalty_key, &royalty_info);
 
-        env.events().publish((Symbol::new(&env, "royalty_set"),), (agent_id, fee));
+        env.events()
+            .publish((Symbol::new(&env, "royalty_set"),), (agent_id, fee));
     }
 
     /// Get royalty info for an agent
@@ -269,7 +265,7 @@ impl Marketplace {
         threshold: i128,
         approvers_required: u32,
         total_approvers: u32,
-        ttl_seconds: u64
+        ttl_seconds: u64,
     ) {
         let current_admin: Address = env
             .storage()
@@ -279,8 +275,14 @@ impl Marketplace {
         assert!(admin == current_admin, "Unauthorized");
 
         assert!(threshold > 0, "Threshold must be positive");
-        assert!(approvers_required > 0, "Approvers required must be positive");
-        assert!(total_approvers >= approvers_required, "Total approvers must be >= required");
+        assert!(
+            approvers_required > 0,
+            "Approvers required must be positive"
+        );
+        assert!(
+            total_approvers >= approvers_required,
+            "Total approvers must be >= required"
+        );
         assert!(ttl_seconds > 0, "TTL must be positive");
 
         let config = ApprovalConfig {
@@ -294,7 +296,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "ApprovalConfigUpdated"),),
-            (threshold, approvers_required, total_approvers, ttl_seconds)
+            (threshold, approvers_required, total_approvers, ttl_seconds),
         );
     }
 
@@ -329,8 +331,14 @@ impl Marketplace {
             panic!("Price below approval threshold");
         }
 
-        assert!(approvers.len() as u32 >= config.approvers_required, "Insufficient approvers");
-        assert!(approvers.len() as u32 <= config.total_approvers, "Too many approvers");
+        assert!(
+            approvers.len() as u32 >= config.approvers_required,
+            "Insufficient approvers"
+        );
+        assert!(
+            approvers.len() as u32 <= config.total_approvers,
+            "Too many approvers"
+        );
 
         let approval_id = increment_approval_counter(&env);
         let now = env.ledger().timestamp();
@@ -365,7 +373,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "SaleProposed"),),
-            (approval_id, listing_id, buyer, listing.price)
+            (approval_id, listing_id, buyer, listing.price),
         );
 
         approval_id
@@ -374,7 +382,10 @@ impl Marketplace {
     /// Propose an auction win for multi-signature approval
     pub fn propose_auction_sale(env: Env, auction_id: u64, approvers: Vec<Address>) -> u64 {
         let auction = get_auction(&env, auction_id).expect("Auction not found");
-        assert!(auction.status == AuctionStatus::Active, "Auction not active");
+        assert!(
+            auction.status == AuctionStatus::Active,
+            "Auction not active"
+        );
         assert!(auction.highest_bidder.is_some(), "No winning bid");
 
         let config = get_approval_config(&env);
@@ -384,8 +395,14 @@ impl Marketplace {
             panic!("Price below approval threshold");
         }
 
-        assert!(approvers.len() as u32 >= config.approvers_required, "Insufficient approvers");
-        assert!(approvers.len() as u32 <= config.total_approvers, "Too many approvers");
+        assert!(
+            approvers.len() as u32 >= config.approvers_required,
+            "Insufficient approvers"
+        );
+        assert!(
+            approvers.len() as u32 <= config.total_approvers,
+            "Too many approvers"
+        );
 
         let approval_id = increment_approval_counter(&env);
         let now = env.ledger().timestamp();
@@ -421,7 +438,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "SaleProposed"),),
-            (approval_id, auction_id, buyer, auction.highest_bid)
+            (approval_id, auction_id, buyer, auction.highest_bid),
         );
 
         approval_id
@@ -437,15 +454,30 @@ impl Marketplace {
 
         let mut approval = get_approval(&env, approval_id).expect("Approval not found");
 
-        assert!(approval.status == ApprovalStatus::Pending, "Approval not pending");
-        assert!(env.ledger().timestamp() < approval.expires_at, "Approval expired");
+        assert!(
+            approval.status == ApprovalStatus::Pending,
+            "Approval not pending"
+        );
+        assert!(
+            env.ledger().timestamp() < approval.expires_at,
+            "Approval expired"
+        );
 
         // Check if approver is authorized
-        assert!(approval.approvers.contains(&approver), "Unauthorized approver");
+        assert!(
+            approval.approvers.contains(&approver),
+            "Unauthorized approver"
+        );
 
         // Check if already approved
-        assert!(!approval.approvals_received.contains(&approver), "Already approved");
-        assert!(!approval.rejections_received.contains(&approver), "Already rejected");
+        assert!(
+            !approval.approvals_received.contains(&approver),
+            "Already approved"
+        );
+        assert!(
+            !approval.rejections_received.contains(&approver),
+            "Already rejected"
+        );
 
         approval.approvals_received.push_back(approver.clone());
 
@@ -475,12 +507,12 @@ impl Marketplace {
 
             env.events().publish(
                 (Symbol::new(&env, "SaleApproved"),),
-                (approval_id, approval.approvals_received.len())
+                (approval_id, approval.approvals_received.len()),
             );
         } else {
             env.events().publish(
                 (Symbol::new(&env, "SaleApprovalReceived"),),
-                (approval_id, approver, approval.approvals_received.len())
+                (approval_id, approver, approval.approvals_received.len()),
             );
         }
 
@@ -497,15 +529,30 @@ impl Marketplace {
 
         let mut approval = get_approval(&env, approval_id).expect("Approval not found");
 
-        assert!(approval.status == ApprovalStatus::Pending, "Approval not pending");
-        assert!(env.ledger().timestamp() < approval.expires_at, "Approval expired");
+        assert!(
+            approval.status == ApprovalStatus::Pending,
+            "Approval not pending"
+        );
+        assert!(
+            env.ledger().timestamp() < approval.expires_at,
+            "Approval expired"
+        );
 
         // Check if approver is authorized
-        assert!(approval.approvers.contains(&approver), "Unauthorized approver");
+        assert!(
+            approval.approvers.contains(&approver),
+            "Unauthorized approver"
+        );
 
         // Check if already voted
-        assert!(!approval.approvals_received.contains(&approver), "Already approved");
-        assert!(!approval.rejections_received.contains(&approver), "Already rejected");
+        assert!(
+            !approval.approvals_received.contains(&approver),
+            "Already approved"
+        );
+        assert!(
+            !approval.rejections_received.contains(&approver),
+            "Already rejected"
+        );
 
         approval.rejections_received.push_back(approver.clone());
         approval.rejection_reasons.push_back(reason.clone());
@@ -521,7 +568,10 @@ impl Marketplace {
         };
         add_approval_history(&env, approval_id, &history);
 
-        env.events().publish((Symbol::new(&env, "SaleRejected"),), (approval_id, approver));
+        env.events().publish(
+            (Symbol::new(&env, "SaleRejected"),),
+            (approval_id, approver),
+        );
 
         set_approval(&env, &approval);
     }
@@ -534,8 +584,14 @@ impl Marketplace {
 
         let approval = get_approval(&env, approval_id).expect("Approval not found");
 
-        assert!(approval.status == ApprovalStatus::Approved, "Approval not approved");
-        assert!(env.ledger().timestamp() < approval.expires_at, "Approval expired");
+        assert!(
+            approval.status == ApprovalStatus::Approved,
+            "Approval not approved"
+        );
+        assert!(
+            env.ledger().timestamp() < approval.expires_at,
+            "Approval expired"
+        );
 
         // Execute the sale based on type
         if let Some(listing_id) = approval.listing_id {
@@ -570,12 +626,16 @@ impl Marketplace {
 
         // Transfer payment
         let token_client = token::Client::new(&env, &get_payment_token(&env));
-        
+
         // Transfer marketplace fee to contract
         if marketplace_fee > 0 {
-            token_client.transfer(&approval.buyer, &env.current_contract_address(), &marketplace_fee);
+            token_client.transfer(
+                &approval.buyer,
+                &env.current_contract_address(),
+                &marketplace_fee,
+            );
         }
-        
+
         // Transfer remaining amount to seller
         token_client.transfer(&approval.buyer, &listing.seller, &seller_amount);
 
@@ -600,7 +660,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "SaleExecuted"),),
-            (approval_id, listing_id, approval.buyer, marketplace_fee_bps)
+            (approval_id, listing_id, approval.buyer, marketplace_fee_bps),
         );
     }
 
@@ -619,12 +679,11 @@ impl Marketplace {
                 let marketplace_fee_bps = Self::get_current_marketplace_fee(env.clone());
                 let marketplace_fee = (auction.highest_bid * marketplace_fee_bps as i128) / 10000;
 
-                let royalty_info = Marketplace::get_royalty(env.clone(), auction.agent_id).expect(
-                    "Royalty info not found"
-                );
+                let royalty_info = Marketplace::get_royalty(env.clone(), auction.agent_id)
+                    .expect("Royalty info not found");
 
-                let royalty = (((auction.highest_bid as u128) * (royalty_info.fee as u128)) /
-                    10000) as i128;
+                let royalty =
+                    (((auction.highest_bid as u128) * (royalty_info.fee as u128)) / 10000) as i128;
                 let seller_amount = auction.highest_bid - royalty - marketplace_fee;
 
                 let token_client = token::Client::new(&env, &get_payment_token(&env));
@@ -634,7 +693,7 @@ impl Marketplace {
                     token_client.transfer(
                         &env.current_contract_address(),
                         &env.current_contract_address(),
-                        &marketplace_fee
+                        &marketplace_fee,
                     );
                 }
 
@@ -642,14 +701,14 @@ impl Marketplace {
                 token_client.transfer(
                     &env.current_contract_address(),
                     &royalty_info.recipient,
-                    &royalty
+                    &royalty,
                 );
 
                 // Transfer seller payout
                 token_client.transfer(
                     &env.current_contract_address(),
                     &auction.seller,
-                    &seller_amount
+                    &seller_amount,
                 );
 
                 // NOTE: NFT transfer logic should be added here
@@ -658,7 +717,7 @@ impl Marketplace {
 
                 env.events().publish(
                     (Symbol::new(&env, "AuctionWon"),),
-                    (auction_id, winner, auction.highest_bid, marketplace_fee_bps)
+                    (auction_id, winner, auction.highest_bid, marketplace_fee_bps),
                 );
             } else {
                 // Refund if reserve not met
@@ -666,7 +725,7 @@ impl Marketplace {
                 token_client.transfer(
                     &env.current_contract_address(),
                     &winner,
-                    &auction.highest_bid
+                    &auction.highest_bid,
                 );
                 auction.status = AuctionStatus::Ended;
             }
@@ -693,7 +752,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "SaleExecuted"),),
-            (approval_id, auction_id, updated_approval.buyer)
+            (approval_id, auction_id, updated_approval.buyer),
         );
     }
 
@@ -730,9 +789,8 @@ impl Marketplace {
 
         for approval_id in 1..=counter {
             if let Some(approval) = get_approval(&env, approval_id) {
-                if
-                    approval.status == ApprovalStatus::Pending &&
-                    env.ledger().timestamp() >= approval.expires_at
+                if approval.status == ApprovalStatus::Pending
+                    && env.ledger().timestamp() >= approval.expires_at
                 {
                     // Mark as expired
                     let mut expired_approval = approval;
@@ -755,7 +813,10 @@ impl Marketplace {
         }
 
         if cleaned_count > 0 {
-            env.events().publish((Symbol::new(&env, "ExpiredApprovalsCleaned"),), (cleaned_count,));
+            env.events().publish(
+                (Symbol::new(&env, "ExpiredApprovalsCleaned"),),
+                (cleaned_count,),
+            );
         }
     }
 
@@ -800,7 +861,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "AuctionCreated"),),
-            (auction_id, agent_id, auction_type, start_price)
+            (auction_id, agent_id, auction_type, start_price),
         );
 
         auction_id
@@ -808,7 +869,10 @@ impl Marketplace {
 
     pub fn calculate_dutch_price(env: Env, auction_id: u64) -> i128 {
         let auction = get_auction(&env, auction_id).expect("Auction not found");
-        assert!(auction.auction_type == AuctionType::Dutch, "Not a Dutch auction");
+        assert!(
+            auction.auction_type == AuctionType::Dutch,
+            "Not a Dutch auction"
+        );
 
         // Simplified calculation without dutch_config
         let now = env.ledger().timestamp();
@@ -829,13 +893,26 @@ impl Marketplace {
     pub fn place_bid(env: Env, auction_id: u64, bidder: Address, amount: i128) {
         bidder.require_auth();
         let mut auction = get_auction(&env, auction_id).expect("Auction not found");
-        assert!(auction.status == AuctionStatus::Active, "Auction not active");
-        assert!(auction.auction_type == AuctionType::English, "Not an English auction");
-        assert!(env.ledger().timestamp() < auction.end_time, "Auction expired");
+        assert!(
+            auction.status == AuctionStatus::Active,
+            "Auction not active"
+        );
+        assert!(
+            auction.auction_type == AuctionType::English,
+            "Not an English auction"
+        );
+        assert!(
+            env.ledger().timestamp() < auction.end_time,
+            "Auction expired"
+        );
 
         let min_increment = (auction.highest_bid * (auction.min_bid_increment_bps as i128)) / 10000;
-        let min_bid =
-            auction.highest_bid + (if min_increment > 1000 { min_increment } else { 1000 });
+        let min_bid = auction.highest_bid
+            + (if min_increment > 1000 {
+                min_increment
+            } else {
+                1000
+            });
         assert!(amount >= min_bid, "Bid too low");
 
         let token_client = token::Client::new(&env, &get_payment_token(&env));
@@ -845,7 +922,7 @@ impl Marketplace {
             token_client.transfer(
                 &env.current_contract_address(),
                 &prev_bidder,
-                &auction.highest_bid
+                &auction.highest_bid,
             );
         }
 
@@ -865,7 +942,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "BidPlaced"),),
-            (auction_id, bidder.clone(), amount, auction.end_time)
+            (auction_id, bidder.clone(), amount, auction.end_time),
         );
 
         // Audit log for bid placement
@@ -873,7 +950,7 @@ impl Marketplace {
         let after_state = String::from_str(&env, "{\"bid_placed\":true}");
         let tx_hash = String::from_str(&env, "place_bid");
         let description = Some(String::from_str(&env, "Auction bid placed"));
-        
+
         let _ = create_audit_log(
             &env,
             bidder,
@@ -888,8 +965,14 @@ impl Marketplace {
     pub fn accept_dutch_price(env: Env, auction_id: u64, buyer: Address) {
         buyer.require_auth();
         let mut auction = get_auction(&env, auction_id).expect("Auction not found");
-        assert!(auction.status == AuctionStatus::Active, "Auction not active");
-        assert!(auction.auction_type == AuctionType::Dutch, "Not a Dutch auction");
+        assert!(
+            auction.status == AuctionStatus::Active,
+            "Auction not active"
+        );
+        assert!(
+            auction.auction_type == AuctionType::Dutch,
+            "Not a Dutch auction"
+        );
 
         let current_price = Marketplace::calculate_dutch_price(env.clone(), auction_id);
 
@@ -906,14 +989,17 @@ impl Marketplace {
 
     pub fn resolve_auction(env: Env, auction_id: u64) {
         let mut auction = get_auction(&env, auction_id).expect("Auction not found");
-        assert!(auction.status == AuctionStatus::Active, "Auction not active");
+        assert!(
+            auction.status == AuctionStatus::Active,
+            "Auction not active"
+        );
 
         let is_dutch = auction.auction_type == AuctionType::Dutch;
         let is_english = auction.auction_type == AuctionType::English;
 
         assert!(
-            (is_english && env.ledger().timestamp() >= auction.end_time) ||
-                (is_dutch && auction.highest_bidder.is_some()),
+            (is_english && env.ledger().timestamp() >= auction.end_time)
+                || (is_dutch && auction.highest_bidder.is_some()),
             "Auction not yet ended"
         );
 
@@ -934,12 +1020,11 @@ impl Marketplace {
                 let marketplace_fee_bps = Self::get_current_marketplace_fee(env.clone());
                 let marketplace_fee = (auction.highest_bid * marketplace_fee_bps as i128) / 10000;
 
-                let royalty_info = Marketplace::get_royalty(env.clone(), auction.agent_id).expect(
-                    "Royalty info not found"
-                );
+                let royalty_info = Marketplace::get_royalty(env.clone(), auction.agent_id)
+                    .expect("Royalty info not found");
 
-                let royalty = (((auction.highest_bid as u128) * (royalty_info.fee as u128)) /
-                    10000) as i128;
+                let royalty =
+                    (((auction.highest_bid as u128) * (royalty_info.fee as u128)) / 10000) as i128;
                 let seller_amount = auction.highest_bid - royalty - marketplace_fee;
 
                 let token_client = token::Client::new(&env, &get_payment_token(&env));
@@ -949,7 +1034,7 @@ impl Marketplace {
                     token_client.transfer(
                         &env.current_contract_address(),
                         &env.current_contract_address(),
-                        &marketplace_fee
+                        &marketplace_fee,
                     );
                 }
 
@@ -957,14 +1042,14 @@ impl Marketplace {
                 token_client.transfer(
                     &env.current_contract_address(),
                     &royalty_info.recipient,
-                    &royalty
+                    &royalty,
                 );
 
                 // Transfer seller payout
                 token_client.transfer(
                     &env.current_contract_address(),
                     &auction.seller,
-                    &seller_amount
+                    &seller_amount,
                 );
 
                 // NOTE: NFT transfer logic should be added here
@@ -973,7 +1058,7 @@ impl Marketplace {
 
                 env.events().publish(
                     (Symbol::new(&env, "AuctionWon"),),
-                    (auction_id, winner, auction.highest_bid, marketplace_fee_bps)
+                    (auction_id, winner, auction.highest_bid, marketplace_fee_bps),
                 );
             } else {
                 // Refund if reserve not met (English only)
@@ -982,7 +1067,7 @@ impl Marketplace {
                     token_client.transfer(
                         &env.current_contract_address(),
                         &winner,
-                        &auction.highest_bid
+                        &auction.highest_bid,
                     );
                 }
                 auction.status = AuctionStatus::Ended;
@@ -993,19 +1078,29 @@ impl Marketplace {
 
         set_auction(&env, &auction);
 
-        env.events().publish((Symbol::new(&env, "AuctionEnded"),), (auction_id, auction.status));
+        env.events().publish(
+            (Symbol::new(&env, "AuctionEnded"),),
+            (auction_id, auction.status),
+        );
     }
 
     pub fn cancel_auction(env: Env, auction_id: u64) {
         let mut auction = get_auction(&env, auction_id).expect("Auction not found");
         auction.seller.require_auth();
-        assert!(auction.status == AuctionStatus::Active, "Auction not active");
-        assert!(auction.highest_bidder.is_none(), "Cannot cancel with active bids");
+        assert!(
+            auction.status == AuctionStatus::Active,
+            "Auction not active"
+        );
+        assert!(
+            auction.highest_bidder.is_none(),
+            "Cannot cancel with active bids"
+        );
 
         auction.status = AuctionStatus::Cancelled;
         set_auction(&env, &auction);
 
-        env.events().publish((Symbol::new(&env, "AuctionCancelled"),), (auction_id,));
+        env.events()
+            .publish((Symbol::new(&env, "AuctionCancelled"),), (auction_id,));
     }
     // ---------------- DYNAMIC FEE ADJUSTMENT ----------------
 
@@ -1022,7 +1117,7 @@ impl Marketplace {
         adjustment_window: u64,
     ) {
         admin.require_auth();
-        
+
         // Verify admin is the contract admin
         let current_admin: Address = env
             .storage()
@@ -1062,14 +1157,14 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "FeeAdjustmentInitialized"),),
-            (base_marketplace_fee, min_fee_bps, max_fee_bps)
+            (base_marketplace_fee, min_fee_bps, max_fee_bps),
         );
     }
 
     /// Subscribe to oracle data feeds for fee adjustment
     pub fn subscribe_to_fee_oracles(env: Env, admin: Address, oracle_ids: Vec<Address>) {
         admin.require_auth();
-        
+
         // Verify admin is the contract admin
         let current_admin: Address = env
             .storage()
@@ -1085,19 +1180,34 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "OracleSubscriptionsUpdated"),),
-            (oracle_ids.len(),)
+            (oracle_ids.len(),),
         );
     }
 
     /// Aggregate oracle data for fee calculation
     pub fn aggregate_oracle_data(env: Env) -> storage::FeeCalculationInput {
-        let params = storage::get_fee_adjustment_params(&env)
-            .expect("Fee adjustment not initialized");
+        let params =
+            storage::get_fee_adjustment_params(&env).expect("Fee adjustment not initialized");
 
         // Get oracle data with specific keys for each metric
-        let congestion_data = Self::get_oracle_value_by_key(&env, &params.congestion_oracle_id, "network_congestion", 50);
-        let utilization_data = Self::get_oracle_value_by_key(&env, &params.utilization_oracle_id, "platform_utilization", 50);
-        let volatility_data = Self::get_oracle_value_by_key(&env, &params.volatility_oracle_id, "market_volatility", 50);
+        let congestion_data = Self::get_oracle_value_by_key(
+            &env,
+            &params.congestion_oracle_id,
+            "network_congestion",
+            50,
+        );
+        let utilization_data = Self::get_oracle_value_by_key(
+            &env,
+            &params.utilization_oracle_id,
+            "platform_utilization",
+            50,
+        );
+        let volatility_data = Self::get_oracle_value_by_key(
+            &env,
+            &params.volatility_oracle_id,
+            "market_volatility",
+            50,
+        );
 
         storage::set_last_oracle_update(&env, env.ledger().timestamp());
 
@@ -1109,9 +1219,12 @@ impl Marketplace {
     }
 
     /// Calculate dynamic fees based on oracle input
-    pub fn calculate_dynamic_fees(env: Env, input: storage::FeeCalculationInput) -> storage::FeeStructure {
-        let params = storage::get_fee_adjustment_params(&env)
-            .expect("Fee adjustment not initialized");
+    pub fn calculate_dynamic_fees(
+        env: Env,
+        input: storage::FeeCalculationInput,
+    ) -> storage::FeeStructure {
+        let params =
+            storage::get_fee_adjustment_params(&env).expect("Fee adjustment not initialized");
 
         // Calculate adjustment factors (in basis points, 1000 = 1.0x)
         let congestion_factor = Self::calculate_congestion_factor(input.network_congestion);
@@ -1119,10 +1232,13 @@ impl Marketplace {
         let volatility_factor = Self::calculate_volatility_factor(input.market_volatility);
 
         // Combine factors multiplicatively
-        let combined_factor = (congestion_factor * utilization_factor * volatility_factor) / 1_000_000; // Divide by 10^6 for two multiplications
+        let combined_factor =
+            (congestion_factor * utilization_factor * volatility_factor) / 1_000_000; // Divide by 10^6 for two multiplications
 
         let adjusted_fee = (params.base_marketplace_fee as i128 * combined_factor) / 1000;
-        let clamped_fee = adjusted_fee.max(params.min_fee_bps as i128).min(params.max_fee_bps as i128) as u32;
+        let clamped_fee = adjusted_fee
+            .max(params.min_fee_bps as i128)
+            .min(params.max_fee_bps as i128) as u32;
 
         storage::FeeStructure {
             marketplace_fee_bps: clamped_fee,
@@ -1152,11 +1268,16 @@ impl Marketplace {
 
         if let Some(current) = current_fee_structure {
             // Check if significant change (>20% jump protection)
-            let fee_change_ratio = (new_fee_structure.marketplace_fee_bps as i128 * 1000) / (current.marketplace_fee_bps as i128);
+            let fee_change_ratio = (new_fee_structure.marketplace_fee_bps as i128 * 1000)
+                / (current.marketplace_fee_bps as i128);
 
             if fee_change_ratio > 1200 || fee_change_ratio < 800 {
                 // Start gradual transition
-                Self::start_fee_transition(&env, current.marketplace_fee_bps, new_fee_structure.marketplace_fee_bps);
+                Self::start_fee_transition(
+                    &env,
+                    current.marketplace_fee_bps,
+                    new_fee_structure.marketplace_fee_bps,
+                );
             } else {
                 // Direct update for small changes
                 Self::apply_fee_update(&env, current.marketplace_fee_bps, new_fee_structure);
@@ -1189,7 +1310,9 @@ impl Marketplace {
     /// Process fee transition step (called during transactions)
     pub fn process_fee_transition(env: Env) {
         if let Some(mut transition_state) = storage::get_fee_transition_state(&env) {
-            if transition_state.is_transitioning && transition_state.current_step < transition_state.transition_steps {
+            if transition_state.is_transitioning
+                && transition_state.current_step < transition_state.transition_steps
+            {
                 transition_state.current_step += 1;
 
                 if transition_state.current_step >= transition_state.transition_steps {
@@ -1211,13 +1334,21 @@ impl Marketplace {
     }
 
     /// Get fee adjustment history
-    pub fn get_fee_adjustment_history(env: Env, adjustment_id: u64) -> Option<storage::FeeAdjustmentHistory> {
+    pub fn get_fee_adjustment_history(
+        env: Env,
+        adjustment_id: u64,
+    ) -> Option<storage::FeeAdjustmentHistory> {
         storage::get_fee_adjustment_history(&env, adjustment_id)
     }
 
     // ---------------- INTERNAL FEE CALCULATION HELPERS ----------------
 
-    fn get_oracle_value_by_key(_env: &Env, _oracle_id: &Address, _key: &str, fallback: i128) -> i128 {
+    fn get_oracle_value_by_key(
+        _env: &Env,
+        _oracle_id: &Address,
+        _key: &str,
+        fallback: i128,
+    ) -> i128 {
         // Simplified oracle integration - in production this would call the actual oracle
         // For now, return fallback value to ensure compilation
         fallback
@@ -1259,7 +1390,7 @@ impl Marketplace {
 
             env.events().publish(
                 (Symbol::new(env, "FallbackToStaticFees"),),
-                (params.base_marketplace_fee,)
+                (params.base_marketplace_fee,),
             );
         }
     }
@@ -1278,7 +1409,7 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(env, "FeeTransitionStarted"),),
-            (current_fee, target_fee)
+            (current_fee, target_fee),
         );
     }
 
@@ -1287,8 +1418,10 @@ impl Marketplace {
             return transition_state.target_fee_bps;
         }
 
-        let progress = (transition_state.current_step as i128 * 1000) / (transition_state.transition_steps as i128);
-        let fee_diff = transition_state.target_fee_bps as i128 - transition_state.start_fee_bps as i128;
+        let progress = (transition_state.current_step as i128 * 1000)
+            / (transition_state.transition_steps as i128);
+        let fee_diff =
+            transition_state.target_fee_bps as i128 - transition_state.start_fee_bps as i128;
         let adjusted_fee = transition_state.start_fee_bps as i128 + (fee_diff * progress) / 1000;
 
         adjusted_fee as u32
@@ -1314,7 +1447,11 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(env, "FeeAdjusted"),),
-            (adjustment_id, old_fee, new_fee_structure.marketplace_fee_bps)
+            (
+                adjustment_id,
+                old_fee,
+                new_fee_structure.marketplace_fee_bps,
+            ),
         );
     }
 
@@ -1360,7 +1497,13 @@ impl Marketplace {
         rollback_function: Symbol,
         rollback_args: Vec<Val>,
     ) -> bool {
-        MarketplaceAtomicSupport::rollback_step(&env, transaction_id, step_id, &rollback_function, &rollback_args)
+        MarketplaceAtomicSupport::rollback_step(
+            &env,
+            transaction_id,
+            step_id,
+            &rollback_function,
+            &rollback_args,
+        )
     }
 
     // ============ ATOMIC TRANSACTION ROLLBACK FUNCTIONS ============

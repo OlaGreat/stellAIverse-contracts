@@ -111,7 +111,7 @@ fn test_oracle_subscription() {
     let oracle1 = Address::generate(&env);
     let oracle2 = Address::generate(&env);
     let oracle3 = Address::generate(&env);
-    
+
     let oracles = Vec::from_array(&env, [oracle1, oracle2, oracle3]);
 
     // Subscribe to oracles
@@ -137,16 +137,16 @@ fn test_fee_calculation_factors() {
     env.as_contract(&marketplace_contract, || {
         // Test fee calculation with different inputs
         let input = storage::FeeCalculationInput {
-            network_congestion: 100, // High congestion
+            network_congestion: 100,  // High congestion
             platform_utilization: 50, // Medium utilization
             market_volatility: 0,     // Low volatility
         };
 
         let fee_structure = Marketplace::calculate_dynamic_fees(env.clone(), input);
-        
+
         // High congestion should increase fees
         assert!(fee_structure.marketplace_fee_bps > 250);
-        
+
         // Test with low congestion
         let input_low = storage::FeeCalculationInput {
             network_congestion: 0,   // Low congestion
@@ -155,7 +155,7 @@ fn test_fee_calculation_factors() {
         };
 
         let fee_structure_low = Marketplace::calculate_dynamic_fees(env.clone(), input_low);
-        
+
         // Low congestion should decrease fees
         assert!(fee_structure_low.marketplace_fee_bps < 250);
     });
@@ -174,9 +174,9 @@ fn test_fee_bounds_enforcement() {
     env.as_contract(&marketplace_contract, || {
         // Test extreme high values (should be clamped to max)
         let input_high = storage::FeeCalculationInput {
-            network_congestion: 100, // Max congestion
+            network_congestion: 100,   // Max congestion
             platform_utilization: 100, // Max utilization
-            market_volatility: 100,     // Max volatility
+            market_volatility: 100,    // Max volatility
         };
 
         let fee_structure_high = Marketplace::calculate_dynamic_fees(env.clone(), input_high);
@@ -236,7 +236,7 @@ fn test_oracle_data_aggregation() {
     env.as_contract(&marketplace_contract, || {
         // Test oracle data aggregation (uses fallback values in test)
         let input = Marketplace::aggregate_oracle_data(env.clone());
-        
+
         // Should return fallback values (50 for each metric)
         assert_eq!(input.network_congestion, 50);
         assert_eq!(input.platform_utilization, 50);
@@ -261,7 +261,7 @@ fn test_fee_adjustment_history() {
         // Check if history was recorded - it might be empty in test environment
         // so let's just verify the function doesn't panic
         let history = Marketplace::get_fee_adjustment_history(env.clone(), 1);
-        
+
         // In test environment, history might not be created due to fallback logic
         // The important thing is that the function works without panicking
         if let Some(h) = history {
@@ -316,7 +316,7 @@ fn test_integration_with_buy_agent() {
         };
 
         let fee_structure = Marketplace::calculate_dynamic_fees(env.clone(), input);
-        
+
         // Verify fee is calculated and within bounds
         assert!(fee_structure.marketplace_fee_bps >= 5);
         assert!(fee_structure.marketplace_fee_bps <= 500);
@@ -324,7 +324,7 @@ fn test_integration_with_buy_agent() {
 
         // Test that process_fee_transition works
         Marketplace::process_fee_transition(env.clone());
-        
+
         // Should still be within bounds after transition processing
         let fee_after_transition = Marketplace::get_current_marketplace_fee(env.clone());
         assert!(fee_after_transition >= 5);
@@ -352,7 +352,7 @@ fn test_performance_fee_calculation() {
             };
 
             let fee_structure = Marketplace::calculate_dynamic_fees(env.clone(), input);
-            
+
             // Verify fee is within bounds
             assert!(fee_structure.marketplace_fee_bps >= 5);
             assert!(fee_structure.marketplace_fee_bps <= 500);
@@ -378,7 +378,7 @@ fn test_edge_cases_division_by_zero() {
         };
 
         let fee_structure = Marketplace::calculate_dynamic_fees(env.clone(), input);
-        
+
         // Should be clamped to minimum
         assert_eq!(fee_structure.marketplace_fee_bps, 5);
     });
@@ -402,7 +402,7 @@ fn test_overflow_scenarios() {
         };
 
         let fee_structure = Marketplace::calculate_dynamic_fees(env.clone(), input);
-        
+
         // Should not overflow and should be within bounds
         assert!(fee_structure.marketplace_fee_bps <= 5000);
         assert!(fee_structure.marketplace_fee_bps >= 5);

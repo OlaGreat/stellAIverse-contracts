@@ -1,9 +1,8 @@
 /// Audit logging module for comprehensive contract operation tracking
-/// 
+///
 /// This module provides immutable audit log storage with auto-incrementing IDs,
 /// paginated querying, and signed export capabilities. Audit logs are stored in
 /// a separate namespace to prevent interference with contract state.
-
 use soroban_sdk::{contracttype, Address, Env, String, Symbol, Vec};
 
 // ============================================================================
@@ -114,10 +113,7 @@ pub enum AuditStorageKey {
 /// Get the current audit log ID counter
 pub fn get_log_id_counter(env: &Env) -> u64 {
     let key = Symbol::new(env, "audit_log_id_counter");
-    env.storage()
-        .persistent()
-        .get::<_, u64>(&key)
-        .unwrap_or(0)
+    env.storage().persistent().get::<_, u64>(&key).unwrap_or(0)
 }
 
 /// Increment and return the next audit log ID
@@ -131,19 +127,13 @@ pub fn increment_log_id_counter(env: &Env) -> u64 {
 
 /// Store an audit log entry (immutable after creation)
 pub fn store_audit_log(env: &Env, log: &AuditLog) {
-    let key = (
-        Symbol::new(env, "audit_log_entry"),
-        log.id,
-    );
+    let key = (Symbol::new(env, "audit_log_entry"), log.id);
     env.storage().persistent().set(&key, log);
 }
 
 /// Retrieve an audit log entry by ID
 pub fn get_audit_log(env: &Env, log_id: u64) -> Option<AuditLog> {
-    let key = (
-        Symbol::new(env, "audit_log_entry"),
-        log_id,
-    );
+    let key = (Symbol::new(env, "audit_log_entry"), log_id);
     env.storage().persistent().get(&key)
 }
 
@@ -152,7 +142,7 @@ pub fn get_audit_log(env: &Env, log_id: u64) -> Option<AuditLog> {
 // ============================================================================
 
 /// Create and store a new audit log entry
-/// 
+///
 /// This function automatically assigns an incrementing ID and stores the log
 /// in immutable persistent storage. Log entries cannot be modified or deleted.
 pub fn create_audit_log(
@@ -187,9 +177,9 @@ pub fn create_audit_log(
 // ============================================================================
 
 /// Query audit logs with pagination
-/// 
+///
 /// Returns logs inclusive of start_id and end_id. Handles out-of-range IDs gracefully.
-/// 
+///
 /// # Arguments
 /// * `env` - Soroban environment
 /// * `start_id` - Starting log ID (inclusive), or 1 if 0
@@ -205,7 +195,11 @@ pub fn query_audit_logs(
 
     // Handle boundary conditions
     let actual_start = if start_id == 0 { 1 } else { start_id };
-    let actual_end = if end_id > total_count { total_count } else { end_id };
+    let actual_end = if end_id > total_count {
+        total_count
+    } else {
+        end_id
+    };
     let limit = if max_results == 0 { 100 } else { max_results };
 
     let mut logs: Vec<AuditLog> = Vec::new(env);
@@ -252,7 +246,7 @@ pub fn get_total_audit_log_count(env: &Env) -> u64 {
 // ============================================================================
 
 /// Export audit logs in a format suitable for external auditors
-/// 
+///
 /// Converts audit logs to export format with all fields as strings for consistency.
 pub fn export_audit_logs(
     env: &Env,
@@ -269,9 +263,7 @@ pub fn export_audit_logs(
                 OperationType::AdminMint => String::from_str(env, "AdminMint"),
                 OperationType::AdminTransfer => String::from_str(env, "AdminTransfer"),
                 OperationType::AdminApprove => String::from_str(env, "AdminApprove"),
-                OperationType::AdminSettingsChange => {
-                    String::from_str(env, "AdminSettingsChange")
-                }
+                OperationType::AdminSettingsChange => String::from_str(env, "AdminSettingsChange"),
                 OperationType::AdminAddMinter => String::from_str(env, "AdminAddMinter"),
                 OperationType::SaleCreated => String::from_str(env, "SaleCreated"),
                 OperationType::SaleCompleted => String::from_str(env, "SaleCompleted"),
@@ -321,12 +313,12 @@ pub fn export_audit_logs(
 // ============================================================================
 
 /// All audit logs are permanently retained.
-/// 
+///
 /// This is enforced by:
 /// 1. Immutable storage - logs cannot be modified or deleted after creation
 /// 2. Persistent storage layer - ensures data survives contract state resets
 /// 3. Sequential ID assignment - maintains complete audit trail
-/// 
+///
 /// For storage optimization with large volumes, consider:
 /// - Archiving old logs to external storage (IPFS, S3, etc.)
 /// - Compressing old log batches

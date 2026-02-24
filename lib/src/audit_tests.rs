@@ -1,17 +1,20 @@
 #[cfg(test)]
 mod tests {
-    use soroban_sdk::{Address, Env, String, Vec};
     use crate::audit::{
-        create_audit_log, get_audit_log, get_log_id_counter, get_total_audit_log_count,
-        query_audit_logs, OperationType, export_audit_logs,
+        create_audit_log, export_audit_logs, get_audit_log, get_log_id_counter,
+        get_total_audit_log_count, query_audit_logs, OperationType,
     };
+    use soroban_sdk::{Address, Env, String, Vec};
 
     // ========================================================================
     // Helper Functions
     // ========================================================================
 
     fn get_contract_id(env: &Env) -> Address {
-        Address::from_string(&String::from_str(env, "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHSC4"))
+        Address::from_string(&String::from_str(
+            env,
+            "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHSC4",
+        ))
     }
 
     // ========================================================================
@@ -25,7 +28,10 @@ mod tests {
 
         let contract_id = get_contract_id(&env);
         env.as_contract(&contract_id, || {
-            let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+            let operator = Address::from_string(&String::from_str(
+                &env,
+                "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+            ));
             let before_state = String::from_str(&env, "{}");
             let after_state = String::from_str(&env, r#"{"status":"active"}"#);
             let tx_hash = String::from_str(&env, "abcd1234");
@@ -60,7 +66,10 @@ mod tests {
 
         let contract_id = get_contract_id(&env);
         env.as_contract(&contract_id, || {
-            let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+            let operator = Address::from_string(&String::from_str(
+                &env,
+                "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+            ));
             let before_state = String::from_str(&env, "{}");
             let after_state = String::from_str(&env, "{}");
             let tx_hash = String::from_str(&env, "tx1");
@@ -111,7 +120,10 @@ mod tests {
 
         let contract_id = get_contract_id(&env);
         env.as_contract(&contract_id, || {
-            let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+            let operator = Address::from_string(&String::from_str(
+                &env,
+                "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+            ));
             let before_state = String::from_str(&env, "{}");
             let after_state = String::from_str(&env, "{}");
             let tx_hash = String::from_str(&env, "tx1");
@@ -143,7 +155,10 @@ mod tests {
 
         let contract_id = get_contract_id(&env);
         env.as_contract(&contract_id, || {
-            let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+            let operator = Address::from_string(&String::from_str(
+                &env,
+                "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+            ));
             let before_state = String::from_str(&env, "{\"count\":0}");
             let after_state = String::from_str(&env, "{\"count\":1}");
             let tx_hash = String::from_str(&env, "0xabcd");
@@ -184,7 +199,10 @@ mod tests {
 
         let contract_id = get_contract_id(&env);
         env.as_contract(&contract_id, || {
-            let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+            let operator = Address::from_string(&String::from_str(
+                &env,
+                "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+            ));
             let before_state = String::from_str(&env, "{}");
             let after_state = String::from_str(&env, "{}");
             let tx_hash = String::from_str(&env, "tx1");
@@ -224,7 +242,10 @@ mod tests {
 
         let contract_id = get_contract_id(&env);
         env.as_contract(&contract_id, || {
-            let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+            let operator = Address::from_string(&String::from_str(
+                &env,
+                "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+            ));
             let before_state = String::from_str(&env, "{}");
             let after_state = String::from_str(&env, "{}");
             let tx_hash = String::from_str(&env, "tx1");
@@ -272,7 +293,10 @@ mod tests {
 
         let contract_id = get_contract_id(&env);
         env.as_contract(&contract_id, || {
-            let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+            let operator = Address::from_string(&String::from_str(
+                &env,
+                "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+            ));
             let before_state = String::from_str(&env, "{}");
             let after_state = String::from_str(&env, "{}");
             let tx_hash = String::from_str(&env, "tx1");
@@ -312,7 +336,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+        let operator = Address::from_string(&String::from_str(
+            &env,
+            "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+        ));
         let before_state = String::from_str(&env, "{}");
         let after_state = String::from_str(&env, "{}");
         let tx_hash = String::from_str(&env, "tx1");
@@ -356,7 +383,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+        let operator = Address::from_string(&String::from_str(
+            &env,
+            "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+        ));
         let before_state = String::from_str(&env, "{\"a\":1}");
         let after_state = String::from_str(&env, "{\"b\":2}");
         let tx_hash = String::from_str(&env, "tx_hash_export");
@@ -394,7 +424,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+        let operator = Address::from_string(&String::from_str(
+            &env,
+            "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+        ));
         let before_state = String::from_str(&env, "{}");
         let after_state = String::from_str(&env, "{}");
         let tx_hash = String::from_str(&env, "tx");
@@ -435,7 +468,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+        let operator = Address::from_string(&String::from_str(
+            &env,
+            "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+        ));
         let before_state = String::from_str(&env, "{}");
         let after_state = String::from_str(&env, "{}");
         let tx_hash = String::from_str(&env, "tx");
@@ -473,7 +509,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+        let operator = Address::from_string(&String::from_str(
+            &env,
+            "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+        ));
         let before_state = String::from_str(&env, "{}");
         let after_state = String::from_str(&env, "{}");
         let tx_hash = String::from_str(&env, "tx");
@@ -499,7 +538,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+        let operator = Address::from_string(&String::from_str(
+            &env,
+            "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+        ));
         let before_state = String::from_str(&env, "{}");
         let after_state = String::from_str(&env, "{}");
         let tx_hash = String::from_str(&env, "tx");
@@ -533,7 +575,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+        let operator = Address::from_string(&String::from_str(
+            &env,
+            "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+        ));
         let before_state = String::from_str(&env, "{}");
         let after_state = String::from_str(&env, "{}");
         let tx_hash = String::from_str(&env, "tx");
@@ -566,7 +611,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let operator = Address::from_string(&String::from_str(&env, "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H"));
+        let operator = Address::from_string(&String::from_str(
+            &env,
+            "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H",
+        ));
         let before_state = String::from_str(&env, "{}");
         let after_state = String::from_str(&env, "{}");
         let tx_hash = String::from_str(&env, "tx");

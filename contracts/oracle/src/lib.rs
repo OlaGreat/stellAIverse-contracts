@@ -10,9 +10,14 @@ mod types;
 
 use alloc::vec::Vec as StdVec;
 use core::convert::TryInto;
-use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, Symbol, Val, Vec, String, IntoVal};
 use soroban_sdk::xdr::{self, Limited, Limits, WriteXdr};
-use stellai_lib::{OracleData, ADMIN_KEY, PROVIDER_LIST_KEY, audit::{create_audit_log, OperationType}};
+use soroban_sdk::{
+    contract, contractimpl, Address, Bytes, BytesN, Env, IntoVal, String, Symbol, Val, Vec,
+};
+use stellai_lib::{
+    audit::{create_audit_log, OperationType},
+    OracleData, ADMIN_KEY, PROVIDER_LIST_KEY,
+};
 
 pub use types::*;
 
@@ -120,7 +125,7 @@ impl Oracle {
 
         // Log audit entry for oracle data submission
         let before_state = String::from_str(&env, "{}"); // No specific 'before' state for new data
-        // A simple after state, could be more detailed in a real scenario
+                                                         // A simple after state, could be more detailed in a real scenario
         let after_state = String::from_str(&env, "{\"status\":\"submitted\"}");
         // In a real scenario, this would be the actual transaction hash
         let tx_hash = String::from_str(&env, "0x_placeholder_tx_hash");

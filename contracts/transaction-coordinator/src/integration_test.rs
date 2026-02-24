@@ -2,8 +2,11 @@
 
 use super::*;
 use crate::workflows::AtomicAgentSaleWorkflow;
-use soroban_sdk::{testutils::{Address as _, Ledger}, Env, Address, Vec, String};
-use stellai_lib::{TransactionStep, TransactionStatus};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env, String, Vec,
+};
+use stellai_lib::{TransactionStatus, TransactionStep};
 
 fn create_test_env() -> (Env, Address, Address, Address) {
     let env = Env::default();
@@ -375,16 +378,16 @@ fn test_complex_dependency_resolution() {
 
     // Test dependency resolution
     let execution_order = AtomicTransactionUtils::resolve_execution_order(&env, &transaction.steps);
-    
+
     // Step 1 should be first (no dependencies)
     assert_eq!(execution_order.get(0).unwrap(), 1);
-    
+
     // Steps 2 and 3 should come after step 1
     let step_1_index = execution_order.iter().position(|x| x == 1).unwrap();
     let step_2_index = execution_order.iter().position(|x| x == 2).unwrap();
     let step_3_index = execution_order.iter().position(|x| x == 3).unwrap();
     let step_4_index = execution_order.iter().position(|x| x == 4).unwrap();
-    
+
     assert!(step_2_index > step_1_index);
     assert!(step_3_index > step_1_index);
     assert!(step_4_index > step_3_index);
@@ -416,7 +419,7 @@ fn test_transaction_journal_creation() {
     );
 
     let tx_id = client.create_transaction(&buyer, &steps);
-    
+
     // Verify transaction creation was journaled
     // In a real implementation, you would check the journal entries
     // For now, just verify the transaction exists

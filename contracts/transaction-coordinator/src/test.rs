@@ -1,8 +1,11 @@
 #![cfg(test)]
 
 use super::*;
-use soroban_sdk::{testutils::{Address as _, Ledger}, Env, Address, Vec};
-use stellai_lib::{TransactionStep, TransactionStatus};
+use soroban_sdk::{
+    testutils::{Address as _, Ledger},
+    Address, Env, Vec,
+};
+use stellai_lib::{TransactionStatus, TransactionStep};
 
 fn create_test_env() -> (Env, Address, Address) {
     let env = Env::default();
@@ -133,7 +136,7 @@ fn test_transaction_with_dependencies() {
 
     let tx_id = client.create_transaction(&user, &steps);
     let transaction = client.get_transaction(&tx_id).unwrap();
-    
+
     assert_eq!(transaction.steps.len(), 2);
     assert_eq!(transaction.steps.get(1).unwrap().depends_on, Some(1));
 }
@@ -164,7 +167,7 @@ fn test_transaction_status_queries() {
     );
 
     let tx_id = client.create_transaction(&user, &steps);
-    
+
     let status = client.get_transaction_status(&tx_id).unwrap();
     assert_eq!(status, TransactionStatus::Initiated);
 }
@@ -312,7 +315,7 @@ fn test_execution_order_resolution() {
     );
 
     let execution_order = AtomicTransactionUtils::resolve_execution_order(&env, &steps);
-    
+
     // Should execute in dependency order: 1, then 2 and 3 (which both depend on 1)
     assert_eq!(execution_order.get(0).unwrap(), 1);
     assert!(execution_order.contains(&2));
@@ -340,7 +343,10 @@ fn test_timeout_detection() {
         failure_reason: None,
     };
 
-    assert!(AtomicTransactionUtils::is_transaction_timed_out(&env, &transaction));
+    assert!(AtomicTransactionUtils::is_transaction_timed_out(
+        &env,
+        &transaction
+    ));
 
     let not_expired_tx = AtomicTransaction {
         transaction_id: 2,
@@ -354,5 +360,8 @@ fn test_timeout_detection() {
         failure_reason: None,
     };
 
-    assert!(!AtomicTransactionUtils::is_transaction_timed_out(&env, &not_expired_tx));
+    assert!(!AtomicTransactionUtils::is_transaction_timed_out(
+        &env,
+        &not_expired_tx
+    ));
 }
