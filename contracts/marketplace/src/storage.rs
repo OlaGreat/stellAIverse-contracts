@@ -147,6 +147,7 @@ pub fn get_approval_history(
     env.storage().instance().get(&DataKey::ApprovalHistory(approval_id, index))
 }
 
+#[allow(dead_code)]
 pub fn delete_approval(env: &Env, approval_id: u64) {
     env.storage().instance().remove(&DataKey::Approval(approval_id));
 

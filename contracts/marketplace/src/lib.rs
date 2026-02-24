@@ -9,8 +9,6 @@ use stellai_lib::{
     Auction,
     AuctionType,
     AuctionStatus,
-    DutchAuctionConfig,
-    PriceDecay,
     ApprovalConfig,
     Approval,
     ApprovalStatus,
@@ -114,7 +112,23 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "listing_created"),),
-            (listing_id, agent_id, seller, price)
+            (listing_id, agent_id, seller.clone(), price)
+        );
+
+        // Log audit entry for sale created
+        let before_state = String::from_str(&env, "{}");
+        let after_state = String::from_str(&env, "{\"listing_created\":true}");
+        let tx_hash = String::from_str(&env, "create_listing");
+        let description = Some(String::from_str(&env, "Marketplace listing created"));
+        
+        let _ = create_audit_log(
+            &env,
+            seller,
+            OperationType::SaleCreated,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
 
         listing_id
@@ -743,6 +757,7 @@ impl Marketplace {
 
     // ---------------- AUCTIONS ----------------
 
+    /// Dutch params: (start_price, end_price, duration_seconds, price_decay). Use (None,None,None,None) for non-Dutch.
     pub fn create_auction(
         env: Env,
         agent_id: u64,
@@ -757,6 +772,8 @@ impl Marketplace {
         seller.require_auth();
         assert!(start_price > 0, "Invalid start price");
         assert!(duration > 0, "Invalid duration");
+
+        let (dutch_start_price, dutch_end_price, dutch_duration_seconds, dutch_price_decay) = dutch_params;
 
         let auction_id = increment_auction_counter(&env);
         let start_time = env.ledger().timestamp();
@@ -847,7 +864,23 @@ impl Marketplace {
 
         env.events().publish(
             (Symbol::new(&env, "BidPlaced"),),
-            (auction_id, bidder, amount, auction.end_time)
+            (auction_id, bidder.clone(), amount, auction.end_time)
+        );
+
+        // Audit log for bid placement
+        let before_state = String::from_str(&env, "{\"bid_placed\":false}");
+        let after_state = String::from_str(&env, "{\"bid_placed\":true}");
+        let tx_hash = String::from_str(&env, "place_bid");
+        let description = Some(String::from_str(&env, "Auction bid placed"));
+        
+        let _ = create_audit_log(
+            &env,
+            bidder,
+            OperationType::AuctionBidPlaced,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
     }
 
