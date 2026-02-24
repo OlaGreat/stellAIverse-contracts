@@ -7,9 +7,9 @@ mod test;
 // We import the shared types and errors from stellai_lib here.
 // ============================================================================
 use stellai_lib::{
-    errors::ContractError, Agent, RoyaltyInfo, ADMIN_KEY, AGENT_COUNTER_KEY, APPROVED_MINTERS_KEY,
-    MAX_ROYALTY_FEE,
     audit::{create_audit_log, OperationType},
+    errors::ContractError,
+    Agent, RoyaltyInfo, ADMIN_KEY, AGENT_COUNTER_KEY, APPROVED_MINTERS_KEY, MAX_ROYALTY_FEE,
 };
 
 // Maximum lengths for validation
@@ -132,13 +132,13 @@ impl AgentNFT {
 
         if caller != &admin {
             // Log the authorization failure
-            let before_state = String::from_str(env, "{}");
-            let after_state = String::from_str(env, "{}");
-            let tx_hash = String::from_str(env, "verify_admin_fail"); // Placeholder
-            let description = Some(String::from_str(env, "Admin verification failed."));
-            
+            let before_state = String::from_str(&env, "{}");
+            let after_state = String::from_str(&env, "{}");
+            let tx_hash = String::from_str(&env, "verify_admin_fail"); // Placeholder
+            let description = Some(String::from_str(&env, "Admin verification failed."));
+
             let _ = create_audit_log(
-                env,
+                &env,
                 caller.clone(),
                 OperationType::AuthFailure,
                 before_state,
@@ -180,13 +180,13 @@ impl AgentNFT {
         }
 
         // If we reach here, no match was found.
-        let before_state = String::from_str(env, "{}");
-        let after_state = String::from_str(env, "{}");
-        let tx_hash = String::from_str(env, "verify_minter_fail"); // Placeholder
-        let description = Some(String::from_str(env, "Minter verification failed."));
-        
+        let before_state = String::from_str(&env, "{}");
+        let after_state = String::from_str(&env, "{}");
+        let tx_hash = String::from_str(&env, "verify_minter_fail"); // Placeholder
+        let description = Some(String::from_str(&env, "Minter verification failed."));
+
         let _ = create_audit_log(
-            env,
+            &env,
             caller.clone(),
             OperationType::AuthFailure,
             before_state,
@@ -271,9 +271,12 @@ impl AgentNFT {
         }
 
         // Validate and store royalty info if provided
-        if let (Some(recipient), Some(fee)) = (royalty_recipient, royalty_fee) {
+        if let (Some(recipient), Some(fee)) = (&royalty_recipient, royalty_fee) {
             Self::validate_royalty_fee(fee)?;
-            let royalty_info = RoyaltyInfo { recipient, fee };
+            let royalty_info = RoyaltyInfo {
+                recipient: recipient.clone(),
+                fee,
+            };
             let royalty_key = Self::get_royalty_key(&env, agent_id_u64);
             env.storage().instance().set(&royalty_key, &royalty_info);
         } else if royalty_recipient.is_some() || royalty_fee.is_some() {
@@ -315,7 +318,7 @@ impl AgentNFT {
         let after_state = String::from_str(&env, "{\"created\":true}");
         let tx_hash = String::from_str(&env, "mint_agent");
         let description = Some(String::from_str(&env, "AgentNFT minted"));
-        
+
         let _ = create_audit_log(
             &env,
             owner.clone(),
@@ -381,7 +384,7 @@ impl AgentNFT {
         }
 
         // Validate and store royalty info if provided
-        if let (Some(recipient), Some(fee)) = (royalty_recipient, royalty_fee) {
+        if let (Some(recipient), Some(fee)) = (&royalty_recipient, royalty_fee) {
             Self::validate_royalty_fee(fee)?;
         } else if royalty_recipient.is_some() || royalty_fee.is_some() {
             // Both must be provided together or neither
@@ -478,13 +481,16 @@ impl AgentNFT {
         // Authorization check: only owner can update
         if agent.owner != owner {
             // Log the ownership failure
-            let before_state = String::from_str(env, "{}");
-            let after_state = String::from_str(env, "{}");
-            let tx_hash = String::from_str(env, "update_agent_fail"); // Placeholder
-            let description = Some(String::from_str(env, "NotOwner check failed during update."));
-            
+            let before_state = String::from_str(&env, "{}");
+            let after_state = String::from_str(&env, "{}");
+            let tx_hash = String::from_str(&env, "update_agent_fail"); // Placeholder
+            let description = Some(String::from_str(
+                &env,
+                "NotOwner check failed during update.",
+            ));
+
             let _ = create_audit_log(
-                env,
+                &env,
                 owner.clone(), // 'owner' is the caller here
                 OperationType::UnauthorizedAttempt,
                 before_state,
@@ -613,7 +619,7 @@ impl AgentNFT {
         let after_state = String::from_str(&env, "{\"transferred\":true}");
         let tx_hash = String::from_str(&env, "transfer_agent");
         let description = Some(String::from_str(&env, "Agent NFT transferred"));
-        
+
         let _ = create_audit_log(
             &env,
             from,
@@ -874,7 +880,7 @@ mod tests {
     use super::*;
     use soroban_sdk::{testutils::Address as _, Env};
 
-    fn setup_contract(env: &Env) -> (AgentNFTClient, Address) {
+    pub fn setup_contract(env: &Env) -> (AgentNFTClient, Address) {
         let contract_id = env.register_contract(None, AgentNFT);
         let client = AgentNFTClient::new(env, &contract_id);
         let admin = Address::generate(env);
@@ -885,7 +891,7 @@ mod tests {
         (client, admin)
     }
 
-    fn mint_test_agent(
+    pub fn mint_test_agent(
         env: &Env,
         client: &AgentNFTClient,
         owner: &Address,
@@ -893,7 +899,7 @@ mod tests {
         metadata_cid: &str,
         evolution_level: u32,
     ) {
-        let metadata = String::from_str(env, metadata_cid);
+        let metadata = String::from_str(&env, metadata_cid);
         // Added 'None' for royalty_recipient and 'None' for royalty_fee
         client.mint_agent(
             &agent_id,

@@ -2,8 +2,10 @@
 
 extern crate alloc;
 
-use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env, Symbol, String, Vec, Val};
 use alloc::vec::Vec as StdVec;
+use soroban_sdk::{
+    contract, contractimpl, contracttype, token, Address, Env, String, Symbol, Val, Vec,
+};
 
 mod storage;
 mod types;
@@ -44,7 +46,9 @@ impl Governance {
         set_min_voting_period(&env, min_voting_period.unwrap_or(7 * 24 * 60 * 60));
         set_max_voting_period(&env, max_voting_period.unwrap_or(14 * 24 * 60 * 60));
         set_min_proposal_deposit(&env, min_proposal_deposit.unwrap_or(1000u128));
-        env.storage().instance().set(&DataKey::ProposalCounter, &0u64);
+        env.storage()
+            .instance()
+            .set(&DataKey::ProposalCounter, &0u64);
     }
 
     /// Create a new proposal (requires deposit)
@@ -72,7 +76,7 @@ impl Governance {
         let governance_token = get_governance_token(&env);
         let token_client = token::Client::new(&env, &governance_token);
         let balance = token_client.balance(&proposer);
-        
+
         if balance < min_deposit as i128 {
             panic!("Insufficient balance for proposal deposit");
         }
@@ -85,12 +89,15 @@ impl Governance {
         let (has_parameters, params) = if let Some(p) = parameters {
             (true, p)
         } else {
-            (false, ProposalParameters {
-                name: String::from_str(&env, ""),
-                value: String::from_str(&env, ""),
-            })
+            (
+                false,
+                ProposalParameters {
+                    name: String::from_str(&env, ""),
+                    value: String::from_str(&env, ""),
+                },
+            )
         };
-        
+
         let proposal = Proposal {
             proposal_id,
             title,
@@ -143,7 +150,7 @@ impl Governance {
         };
 
         let delegated_power = Self::calculate_delegated_power_to(&env, &address);
-        
+
         let own_delegated_away = if let Some(delegation) = get_delegation(&env, &address) {
             delegation.amount
         } else {
@@ -161,12 +168,7 @@ impl Governance {
     }
 
     /// Delegate voting power to another address
-    pub fn delegate_voting_power(
-        env: Env,
-        delegator: Address,
-        delegatee: Address,
-        amount: u128,
-    ) {
+    pub fn delegate_voting_power(env: Env, delegator: Address, delegatee: Address, amount: u128) {
         delegator.require_auth();
 
         if delegator == delegatee {
@@ -223,22 +225,17 @@ impl Governance {
         if let Some(old_delegation) = get_delegation(&env, &delegator) {
             storage::remove_delegator_from_list(&env, &old_delegation.delegatee, &delegator);
         }
-        
-        env.storage().instance().remove(&DataKey::Delegation(delegator.clone()));
 
-        env.events().publish(
-            (Symbol::new(&env, "VotingPowerUndelegated"),),
-            (delegator,),
-        );
+        env.storage()
+            .instance()
+            .remove(&DataKey::Delegation(delegator.clone()));
+
+        env.events()
+            .publish((Symbol::new(&env, "VotingPowerUndelegated"),), (delegator,));
     }
 
     /// Lock tokens for vote escrow (4-52 weeks, 2x-4x multiplier)
-    pub fn lock_for_escrow(
-        env: Env,
-        locker: Address,
-        amount: u128,
-        lock_duration_weeks: u32,
-    ) {
+    pub fn lock_for_escrow(env: Env, locker: Address, amount: u128, lock_duration_weeks: u32) {
         locker.require_auth();
 
         if amount == 0 {
@@ -299,8 +296,7 @@ impl Governance {
     pub fn unlock_escrow(env: Env, locker: Address) {
         locker.require_auth();
 
-        let escrow = get_vote_escrow(&env, &locker)
-            .expect("No escrow found");
+        let escrow = get_vote_escrow(&env, &locker).expect("No escrow found");
 
         let current_time = env.ledger().timestamp();
         if escrow.lock_end > current_time {
@@ -312,7 +308,9 @@ impl Governance {
         let contract_address = env.current_contract_address();
         token_client.transfer(&contract_address, &locker, &(escrow.amount as i128));
 
-        env.storage().instance().remove(&DataKey::VoteEscrow(locker.clone()));
+        env.storage()
+            .instance()
+            .remove(&DataKey::VoteEscrow(locker.clone()));
 
         env.events().publish(
             (Symbol::new(&env, "VoteEscrowUnlocked"),),
@@ -321,16 +319,10 @@ impl Governance {
     }
 
     /// Cast a vote on a proposal
-    pub fn cast_vote(
-        env: Env,
-        voter: Address,
-        proposal_id: u64,
-        vote_type: VoteType,
-    ) {
+    pub fn cast_vote(env: Env, voter: Address, proposal_id: u64, vote_type: VoteType) {
         voter.require_auth();
 
-        let mut proposal = get_proposal(&env, proposal_id)
-            .expect("Proposal not found");
+        let mut proposal = get_proposal(&env, proposal_id).expect("Proposal not found");
 
         // Check if voting period is active
         let current_time = env.ledger().timestamp();
@@ -412,7 +404,7 @@ impl Governance {
     fn calculate_delegated_power_to(env: &Env, delegatee: &Address) -> u128 {
         let delegators = storage::get_delegators_to(env, delegatee);
         let mut total_delegated = 0u128;
-        
+
         for i in 0..delegators.len() {
             let delegator = delegators.get(i).unwrap();
             if let Some(delegation) = storage::get_delegation(env, &delegator) {
@@ -420,7 +412,7 @@ impl Governance {
                 let governance_token = get_governance_token(env);
                 let token_client = token::Client::new(env, &governance_token);
                 let base_balance = token_client.balance(&delegator) as u128;
-                
+
                 // Add escrow power if exists
                 let escrow_power = if let Some(escrow) = storage::get_vote_escrow(env, &delegator) {
                     let current_time = env.ledger().timestamp();
@@ -432,7 +424,7 @@ impl Governance {
                 } else {
                     0
                 };
-                
+
                 // The delegated amount is what was actually delegated
                 // We cap it at the delegator's own power (base + escrow) at the time of delegation
                 // Note: We don't subtract what the delegator has delegated away because
@@ -443,11 +435,11 @@ impl Governance {
                 } else {
                     delegation.amount
                 };
-                
+
                 total_delegated += delegated_amount;
             }
         }
-        
+
         total_delegated
     }
 
@@ -455,8 +447,7 @@ impl Governance {
     pub fn execute_proposal(env: Env, executor: Address, proposal_id: u64) {
         executor.require_auth();
 
-        let mut proposal = get_proposal(&env, proposal_id)
-            .expect("Proposal not found");
+        let mut proposal = get_proposal(&env, proposal_id).expect("Proposal not found");
 
         // Check if proposal has passed
         if proposal.status != ProposalStatus::Passed {
@@ -488,10 +479,9 @@ impl Governance {
         match &proposal.proposal_type {
             ProposalType::ParameterChange => {
                 // For parameter changes, call the target function with parameters
-                if let (Some(target), Some(function)) = (
-                    &proposal.target_contract,
-                    &proposal.target_function,
-                ) {
+                if let (Some(target), Some(function)) =
+                    (&proposal.target_contract, &proposal.target_function)
+                {
                     if !proposal.has_parameters {
                         panic!("ParameterChange proposal missing parameters");
                     }
@@ -500,30 +490,31 @@ impl Governance {
                     let mut args = Vec::new(&env);
                     args.push_back(params.name.clone().into());
                     args.push_back(params.value.clone().into());
-                    
+
                     // Add any additional target args if provided
                     if let Some(target_args) = &proposal.target_args {
                         for i in 0..target_args.len() {
                             args.push_back(target_args.get(i).unwrap());
                         }
                     }
-                    
+
                     // Invoke target contract function
                     // Invoke target contract function
                     let _result: Val = env.invoke_contract(&target, function, args);
                 } else {
-                    panic!("ParameterChange proposal missing target contract, function, or parameters");
+                    panic!(
+                        "ParameterChange proposal missing target contract, function, or parameters"
+                    );
                 }
             }
             ProposalType::ContractUpgrade => {
                 // For contract upgrades, call upgrade function on target contract
-                if let (Some(target), Some(function)) = (
-                    &proposal.target_contract,
-                    &proposal.target_function,
-                ) {
+                if let (Some(target), Some(function)) =
+                    (&proposal.target_contract, &proposal.target_function)
+                {
                     // Build arguments: new contract address from parameters or target args
                     let mut args = Vec::new(&env);
-                    
+
                     if let Some(target_args) = &proposal.target_args {
                         // Use provided target args (should contain new contract address)
                         for i in 0..target_args.len() {
@@ -535,7 +526,7 @@ impl Governance {
                         // For now, we'll require target_args to be provided
                         panic!("ContractUpgrade requires target_args with new contract address");
                     }
-                    
+
                     // Invoke upgrade function
                     let _result: Val = env.invoke_contract(&target, function, args);
                 } else {
@@ -544,13 +535,12 @@ impl Governance {
             }
             ProposalType::EmergencyPause => {
                 // For emergency pause, call pause/unpause on target contract
-                if let (Some(target), Some(function)) = (
-                    &proposal.target_contract,
-                    &proposal.target_function,
-                ) {
+                if let (Some(target), Some(function)) =
+                    (&proposal.target_contract, &proposal.target_function)
+                {
                     // Build arguments: pause state (true/false)
                     let mut args = Vec::new(&env);
-                    
+
                     if let Some(target_args) = &proposal.target_args {
                         // Use provided target args (should contain pause boolean)
                         for i in 0..target_args.len() {
@@ -561,12 +551,13 @@ impl Governance {
                         // Value should be "true" or "false" as string
                         // Compare String directly (Soroban String doesn't have to_string())
                         let params = &proposal.parameters;
-                        let pause_bool = params.value == String::from_str(&env, "true") || params.value == String::from_str(&env, "1");
+                        let pause_bool = params.value == String::from_str(&env, "true")
+                            || params.value == String::from_str(&env, "1");
                         args.push_back(pause_bool.into());
                     } else {
                         panic!("EmergencyPause proposal missing pause state");
                     }
-                    
+
                     // Invoke pause/unpause function
                     let _result: Val = env.invoke_contract(&target, function, args);
                 } else {
@@ -584,7 +575,11 @@ impl Governance {
         let governance_token = get_governance_token(&env);
         let token_client = token::Client::new(&env, &governance_token);
         let contract_address = env.current_contract_address();
-        token_client.transfer(&contract_address, &proposal.proposer, &(min_deposit as i128));
+        token_client.transfer(
+            &contract_address,
+            &proposal.proposer,
+            &(min_deposit as i128),
+        );
 
         // Emit event
         env.events().publish(
@@ -595,8 +590,7 @@ impl Governance {
 
     /// Update proposal status after voting period ends
     pub fn update_proposal_status(env: Env, proposal_id: u64) {
-        let mut proposal = get_proposal(&env, proposal_id)
-            .expect("Proposal not found");
+        let mut proposal = get_proposal(&env, proposal_id).expect("Proposal not found");
 
         if proposal.status != ProposalStatus::Active {
             return; // Already processed
@@ -630,7 +624,12 @@ impl Governance {
             proposal.status = ProposalStatus::Passed;
             env.events().publish(
                 (Symbol::new(&env, "ProposalPassed"),),
-                (proposal_id, proposal.votes_for, proposal.votes_against, proposal.votes_abstain),
+                (
+                    proposal_id,
+                    proposal.votes_for,
+                    proposal.votes_against,
+                    proposal.votes_abstain,
+                ),
             );
         } else {
             proposal.status = ProposalStatus::Failed;
@@ -649,14 +648,14 @@ impl Governance {
         // For Stellar asset contracts, we need to track this manually
         // The admin should call update_circulating_voting_power when supply changes
         // For now, we calculate a reasonable estimate
-        
+
         let governance_token = get_governance_token(&env);
         let token_client = token::Client::new(&env, &governance_token);
-        
+
         // Get contract's token balance (tokens held by governance contract)
         // This includes escrowed tokens and proposal deposits
         let contract_balance = token_client.balance(&env.current_contract_address()) as u128;
-        
+
         // Estimate circulating supply
         // In a real implementation, this would be tracked as a running total
         // For now, we use a conservative estimate: assume most tokens are in circulation
@@ -667,7 +666,7 @@ impl Governance {
         storage::set_circulating_voting_power(&env, circulating);
         circulating
     }
-    
+
     /// Update circulating voting power (admin only)
     pub fn update_circulating_voting_power(env: Env, admin: Address, new_value: u128) {
         admin.require_auth();
@@ -681,7 +680,6 @@ impl Governance {
     pub fn get_proposal(env: Env, proposal_id: u64) -> Option<Proposal> {
         get_proposal(&env, proposal_id)
     }
-
 
     /// Get all active proposals
     pub fn get_active_proposals(env: Env) -> Vec<u64> {

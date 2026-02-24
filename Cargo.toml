@@ -8,7 +8,9 @@ members = [
     "contracts/oracle",
     "contracts/faucet",
     "contracts/governance",
+    "contracts/transaction-coordinator",
     "lib",
+    "shared",
 ]
 
 resolver = "2"
@@ -27,4 +29,4 @@ debug = true
 strip = "none"
 
 [workspace.dependencies]
-soroban-sdk = "20.5.0"
+soroban-sdk = "22.0.10"
