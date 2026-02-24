@@ -1,0 +1,104 @@
+#[cfg(test)]
+mod prop_tests {
+    use super::*;
+    use proptest::prelude::*;
+    use soroban_sdk::{testutils::Address as _, Env, String, Vec};
+
+    // --- Strategy Helpers ---
+    // Generates a random valid royalty fee (0 to 10,000)
+    fn any_royalty_fee() -> impl Strategy<Value = u32> {
+        0..=10000u32
+    }
+
+    // Generates a vector of strings (capabilities) with length limits
+    fn any_capabilities(env: &Env) -> impl Strategy<Value = core::primitive::vec::Vec<std::string::String>> {
+        prop::collection::vec(".*", 0..10)
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(1000))]
+
+        #[test]
+        fn prop_agent_counter_always_increases_correctly(num_mints in 1..50usize) {
+            let env = Env::default();
+            let contract_id = env.register_contract(None, AgentNFT);
+            let client = AgentNFTClient::new(&env, &contract_id);
+            let admin = Address::generate(&env);
+            
+            env.mock_all_auths();
+            client.init_contract(&admin);
+
+            let mut expected_counter = 0;
+            for _ in 0..num_mints {
+                let owner = Address::generate(&env);
+                // Using legacy mint which utilizes the counter
+                client.mint_agent_legacy(
+                    &owner,
+                    &String::from_str(&env, "Agent"),
+                    &String::from_str(&env, "Hash"),
+                    &Vec::new(&env),
+                    &None,
+                    &None
+                );
+                expected_counter += 1;
+                
+                // INVARIANT: Counter must match number of successful legacy mints
+                prop_assert_eq!(client.total_agents(), expected_counter);
+            }
+        }
+
+        #[test]
+        fn prop_royalty_fee_invariant(fee in 10001..u32::MAX) {
+            let env = Env::default();
+            let contract_id = env.register_contract(None, AgentNFT);
+            let client = AgentNFTClient::new(&env, &contract_id);
+            let admin = Address::generate(&env);
+            
+            env.mock_all_auths();
+            client.init_contract(&admin);
+
+            let owner = Address::generate(&env);
+            let recipient = Address::generate(&env);
+
+            // INVARIANT: Any fee > 10000 must return InvalidRoyaltyFee error
+            let result = client.try_mint_agent(
+                &1, 
+                &owner, 
+                &String::from_str(&env, "cid"), 
+                &1, 
+                &Some(recipient), 
+                &Some(fee)
+            );
+
+            match result {
+                Err(Ok(ContractError::InvalidRoyaltyFee)) => {},
+                _ => panic!("Should have failed with InvalidRoyaltyFee for value {}", fee),
+            }
+        }
+
+        #[test]
+        fn prop_transfer_auth_invariant(
+            id in 1..100u64, 
+            random_user in prop::option::of(just(true)) // dummy for randomization
+        ) {
+            let env = Env::default();
+            env.mock_all_auths();
+            let (client, admin) = setup_contract(&env);
+            
+            let owner = Address::generate(&env);
+            let stranger = Address::generate(&env);
+            client.add_approved_minter(&admin, &owner);
+            
+            mint_test_agent(&env, &client, &owner, id as u128, "cid", 1);
+
+            // INVARIANT: Only owner can transfer. Stranger must fail.
+            // We force the 'stranger' to be the one calling require_auth via mock_all_auths logic
+            let result = client.try_transfer_agent(&id, &stranger, &Address::generate(&env));
+            
+            match result {
+                Err(Ok(ContractError::NotOwner)) => {},
+                _ => panic!("Non-owner was able to initiate transfer or got wrong error"),
+            }
+        }
+    }
+}

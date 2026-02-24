@@ -1,7 +1,12 @@
 #![no_std]
 pub mod errors;
+pub mod audit;
+pub mod audit_helpers;
 
-use soroban_sdk::{contracttype, symbol_short, Address, Bytes, String, Symbol, Vec};
+#[cfg(test)]
+mod audit_tests;
+
+use soroban_sdk::{ contracttype, symbol_short, Address, Bytes, String, Symbol, Vec };
 
 /// Oracle data entry
 #[derive(Clone, Debug)]
@@ -204,3 +209,13 @@ pub const APPROVED_MINTERS_KEY: &str = "approved_minters";
 pub const IMPLEMENTATION_KEY: Symbol = symbol_short!("impl_key");
 pub const UPGRADE_HISTORY_KEY: Symbol = symbol_short!("up_hist");
 pub const IS_PAUSED_KEY: Symbol = symbol_short!("is_paused");
+
+// Approval constants
+pub const APPROVAL_CONFIG_KEY: &str = "approval_config";
+pub const APPROVAL_COUNTER_KEY: &str = "approval_counter";
+pub const APPROVAL_KEY_PREFIX: &str = "approval_";
+pub const APPROVAL_HISTORY_KEY_PREFIX: &str = "approval_history_";
+pub const DEFAULT_APPROVAL_THRESHOLD: i128 = 10_000_000_000; // 10,000 USDC in stroops (assuming 7 decimals)
+pub const DEFAULT_APPROVERS_REQUIRED: u32 = 2; // N of M
+pub const DEFAULT_TOTAL_APPROVERS: u32 = 3; // Total authorized approvers
+pub const DEFAULT_APPROVAL_TTL_SECONDS: u64 = 604800; // 7 days

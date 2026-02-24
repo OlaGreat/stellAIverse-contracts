@@ -1,5 +1,6 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Symbol, Vec};
+mod test;
 
 // ============================================================================
 // LIBRARY IMPORTS
@@ -8,6 +9,7 @@ use soroban_sdk::{contract, contractimpl, contracttype, Address, Env, String, Sy
 use stellai_lib::{
     errors::ContractError, Agent, RoyaltyInfo, ADMIN_KEY, AGENT_COUNTER_KEY, APPROVED_MINTERS_KEY,
     MAX_ROYALTY_FEE,
+    audit::{create_audit_log, OperationType},
 };
 
 // Maximum lengths for validation
@@ -129,6 +131,21 @@ impl AgentNFT {
             .ok_or(ContractError::Unauthorized)?;
 
         if caller != &admin {
+            // Log the authorization failure
+            let before_state = String::from_str(env, "{}");
+            let after_state = String::from_str(env, "{}");
+            let tx_hash = String::from_str(env, "verify_admin_fail"); // Placeholder
+            let description = Some(String::from_str(env, "Admin verification failed."));
+            
+            let _ = create_audit_log(
+                env,
+                caller.clone(),
+                OperationType::AuthFailure,
+                before_state,
+                after_state,
+                tx_hash,
+                description,
+            );
             return Err(ContractError::Unauthorized);
         }
         Ok(())
@@ -162,6 +179,21 @@ impl AgentNFT {
             }
         }
 
+        // If we reach here, no match was found.
+        let before_state = String::from_str(env, "{}");
+        let after_state = String::from_str(env, "{}");
+        let tx_hash = String::from_str(env, "verify_minter_fail"); // Placeholder
+        let description = Some(String::from_str(env, "Minter verification failed."));
+        
+        let _ = create_audit_log(
+            env,
+            caller.clone(),
+            OperationType::AuthFailure,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
+        );
         Err(ContractError::Unauthorized)
     }
 
@@ -276,6 +308,22 @@ impl AgentNFT {
         env.events().publish(
             (Symbol::new(&env, "agent_nft"), AgentEvent::AgentMinted),
             (agent_id_u64, owner.clone(), initial_evolution_level),
+        );
+
+        // Log audit entry for admin mint operation
+        let before_state = String::from_str(&env, "{}");
+        let after_state = String::from_str(&env, "{\"created\":true}");
+        let tx_hash = String::from_str(&env, "mint_agent");
+        let description = Some(String::from_str(&env, "AgentNFT minted"));
+        
+        let _ = create_audit_log(
+            &env,
+            owner.clone(),
+            OperationType::AdminMint,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
 
         Ok(())
@@ -429,6 +477,21 @@ impl AgentNFT {
 
         // Authorization check: only owner can update
         if agent.owner != owner {
+            // Log the ownership failure
+            let before_state = String::from_str(env, "{}");
+            let after_state = String::from_str(env, "{}");
+            let tx_hash = String::from_str(env, "update_agent_fail"); // Placeholder
+            let description = Some(String::from_str(env, "NotOwner check failed during update."));
+            
+            let _ = create_audit_log(
+                env,
+                owner.clone(), // 'owner' is the caller here
+                OperationType::UnauthorizedAttempt,
+                before_state,
+                after_state,
+                tx_hash,
+                description,
+            );
             return Err(ContractError::NotOwner);
         }
 
@@ -542,7 +605,23 @@ impl AgentNFT {
 
         env.events().publish(
             (Symbol::new(&env, "agent_nft"), AgentEvent::AgentTransferred),
-            (agent_id, previous_owner, to.clone()),
+            (agent_id, previous_owner.clone(), to.clone()),
+        );
+
+        // Audit log for transfer
+        let before_state = String::from_str(&env, "{\"transferred\":false}");
+        let after_state = String::from_str(&env, "{\"transferred\":true}");
+        let tx_hash = String::from_str(&env, "transfer_agent");
+        let description = Some(String::from_str(&env, "Agent NFT transferred"));
+        
+        let _ = create_audit_log(
+            &env,
+            from,
+            OperationType::AdminTransfer,
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
 
         Ok(())

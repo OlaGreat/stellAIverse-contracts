@@ -4,30 +4,15 @@ extern crate alloc;
 
 mod tests;
 mod testutils;
+mod types;
 
 use alloc::vec::Vec as StdVec;
 use core::convert::TryInto;
-use soroban_sdk::{contract, contractimpl, contracttype, Address, Bytes, BytesN, Env, Symbol, Val, Vec};
+use soroban_sdk::{contract, contractimpl, Address, Bytes, BytesN, Env, Symbol, Val, Vec};
 use soroban_sdk::xdr::{self, Limited, Limits, WriteXdr};
-use stellai_lib::{OracleData, ADMIN_KEY, PROVIDER_LIST_KEY};
+use stellai_lib::{OracleData, ADMIN_KEY, PROVIDER_LIST_KEY, audit::{create_audit_log, OperationType}};
 
-#[contracttype]
-pub enum DataKey {
-    Oracle(BytesN<32>),
-    OracleNonce(BytesN<32>),
-}
-
-#[contracttype]
-#[derive(Clone)]
-pub struct RelayRequest {
-    pub relay_contract: Address,
-    pub oracle_pubkey: BytesN<32>,
-    pub target_contract: Address,
-    pub function: Symbol,
-    pub args: Vec<Val>,
-    pub nonce: u64,
-    pub deadline: u64,
-}
+pub use types::*;
 
 #[contract]
 pub struct Oracle;
@@ -128,7 +113,25 @@ impl Oracle {
 
         env.events().publish(
             (Symbol::new(&env, "data_submitted"),),
-            (key, timestamp, provider),
+            (key.clone(), timestamp, provider.clone()),
+        );
+
+        // Log audit entry for oracle data submission
+        let before_state = String::from_str(&env, "{}"); // No specific 'before' state for new data
+        // A simple after state, could be more detailed in a real scenario
+        let after_state = String::from_str(&env, "{\"status\":\"submitted\"}");
+        // In a real scenario, this would be the actual transaction hash
+        let tx_hash = String::from_str(&env, "0x_placeholder_tx_hash");
+        let description = Some(String::from_str(&env, "Oracle data submitted."));
+
+        create_audit_log(
+            &env,
+            provider.clone(),
+            OperationType::ConfigurationChange, // Using a general type as no specific one exists
+            before_state,
+            after_state,
+            tx_hash,
+            description,
         );
     }
 
