@@ -93,7 +93,7 @@ pub enum EvolutionStatus {
 }
 
 /// Royalty information for marketplace transactions
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[contracttype]
 pub struct RoyaltyInfo {
     pub recipient: Address,

@@ -2,14 +2,14 @@
 
 mod evolution_history;
 
-use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec};
+use soroban_sdk::{contract, contractimpl, Address, Env, Symbol, Vec, String};
 use stellai_lib::{
-    EvolutionRequest, EvolutionStatus, EvolutionRecord, ADMIN_KEY, REQUEST_COUNTER_KEY,
+    EvolutionRequest, EvolutionStatus, ADMIN_KEY, REQUEST_COUNTER_KEY,
     audit::{create_audit_log, OperationType},
 };
 use evolution_history::{
     append_evolution, get_evolution_history, get_evolution_count, get_evolution_at_index,
-    get_latest_evolution,
+    get_latest_evolution, EvolutionRecord,
 };
 
 #[contract]
@@ -77,10 +77,10 @@ impl Evolution {
         );
 
         // Audit log for evolution request creation
-        let before_state = soroban_sdk::String::from_str(&env, "{}");
-        let after_state = soroban_sdk::String::from_str(&env, "{\"request_created\":true}");
-        let tx_hash = soroban_sdk::String::from_str(&env, "create_request");
-        let description = Some(soroban_sdk::String::from_str(&env, "Evolution request created"));
+        let before_state = String::from_str(&env, "{}");
+        let after_state = String::from_str(&env, "{\"request_created\":true}");
+        let tx_hash = String::from_str(&env, "create_request");
+        let description = Some(String::from_str(&env, "Evolution request created"));
         
         let _ = create_audit_log(
             &env,
@@ -151,10 +151,10 @@ impl Evolution {
         );
 
         // 7. Audit log for evolution execution
-        let before_state = soroban_sdk::String::from_str(&env, "{\"status\":\"pending\"}");
-        let after_state = soroban_sdk::String::from_str(&env, "{\"status\":\"completed\"}");
-        let tx_hash = soroban_sdk::String::from_str(&env, "execute_evolution");
-        let description = Some(soroban_sdk::String::from_str(&env, "Evolution executed"));
+        let before_state = String::from_str(&env, "{\"status\":\"pending\"}");
+        let after_state = String::from_str(&env, "{\"status\":\"completed\"}");
+        let tx_hash = String::from_str(&env, "execute_evolution");
+        let description = Some(String::from_str(&env, "Evolution executed"));
         
         let _ = create_audit_log(
             &env,

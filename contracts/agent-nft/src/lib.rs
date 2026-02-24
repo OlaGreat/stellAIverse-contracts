@@ -132,13 +132,13 @@ impl AgentNFT {
 
         if caller != &admin {
             // Log the authorization failure
-            let before_state = String::from_str(env, "{}");
-            let after_state = String::from_str(env, "{}");
-            let tx_hash = String::from_str(env, "verify_admin_fail"); // Placeholder
-            let description = Some(String::from_str(env, "Admin verification failed."));
+            let before_state = String::from_str(&env, "{}");
+            let after_state = String::from_str(&env, "{}");
+            let tx_hash = String::from_str(&env, "verify_admin_fail"); // Placeholder
+            let description = Some(String::from_str(&env, "Admin verification failed."));
             
             let _ = create_audit_log(
-                env,
+                &env,
                 caller.clone(),
                 OperationType::AuthFailure,
                 before_state,
@@ -180,13 +180,13 @@ impl AgentNFT {
         }
 
         // If we reach here, no match was found.
-        let before_state = String::from_str(env, "{}");
-        let after_state = String::from_str(env, "{}");
-        let tx_hash = String::from_str(env, "verify_minter_fail"); // Placeholder
-        let description = Some(String::from_str(env, "Minter verification failed."));
+        let before_state = String::from_str(&env, "{}");
+        let after_state = String::from_str(&env, "{}");
+        let tx_hash = String::from_str(&env, "verify_minter_fail"); // Placeholder
+        let description = Some(String::from_str(&env, "Minter verification failed."));
         
         let _ = create_audit_log(
-            env,
+            &env,
             caller.clone(),
             OperationType::AuthFailure,
             before_state,
@@ -271,9 +271,9 @@ impl AgentNFT {
         }
 
         // Validate and store royalty info if provided
-        if let (Some(recipient), Some(fee)) = (royalty_recipient, royalty_fee) {
+        if let (Some(recipient), Some(fee)) = (&royalty_recipient, royalty_fee) {
             Self::validate_royalty_fee(fee)?;
-            let royalty_info = RoyaltyInfo { recipient, fee };
+            let royalty_info = RoyaltyInfo { recipient: recipient.clone(), fee };
             let royalty_key = Self::get_royalty_key(&env, agent_id_u64);
             env.storage().instance().set(&royalty_key, &royalty_info);
         } else if royalty_recipient.is_some() || royalty_fee.is_some() {
@@ -381,7 +381,7 @@ impl AgentNFT {
         }
 
         // Validate and store royalty info if provided
-        if let (Some(recipient), Some(fee)) = (royalty_recipient, royalty_fee) {
+        if let (Some(recipient), Some(fee)) = (&royalty_recipient, royalty_fee) {
             Self::validate_royalty_fee(fee)?;
         } else if royalty_recipient.is_some() || royalty_fee.is_some() {
             // Both must be provided together or neither
@@ -478,13 +478,13 @@ impl AgentNFT {
         // Authorization check: only owner can update
         if agent.owner != owner {
             // Log the ownership failure
-            let before_state = String::from_str(env, "{}");
-            let after_state = String::from_str(env, "{}");
-            let tx_hash = String::from_str(env, "update_agent_fail"); // Placeholder
-            let description = Some(String::from_str(env, "NotOwner check failed during update."));
+            let before_state = String::from_str(&env, "{}");
+            let after_state = String::from_str(&env, "{}");
+            let tx_hash = String::from_str(&env, "update_agent_fail"); // Placeholder
+            let description = Some(String::from_str(&env, "NotOwner check failed during update."));
             
             let _ = create_audit_log(
-                env,
+                &env,
                 owner.clone(), // 'owner' is the caller here
                 OperationType::UnauthorizedAttempt,
                 before_state,
@@ -893,7 +893,7 @@ mod tests {
         metadata_cid: &str,
         evolution_level: u32,
     ) {
-        let metadata = String::from_str(env, metadata_cid);
+        let metadata = String::from_str(&env, metadata_cid);
         // Added 'None' for royalty_recipient and 'None' for royalty_fee
         client.mint_agent(
             &agent_id,

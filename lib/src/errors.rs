@@ -24,4 +24,5 @@ pub enum ContractError {
     InvalidMetadata = 14,
     OracleError = 15,
     RateLimitExceeded = 16,
+    InvalidRoyaltyFee = 17,
 }

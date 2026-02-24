@@ -17,6 +17,7 @@ use stellai_lib::{
     ApprovalStatus,
     ApprovalHistory,
     atomic::AtomicTransactionSupport,
+    audit::{create_audit_log, OperationType},
 };
 
 use storage::*;
@@ -770,13 +771,10 @@ impl Marketplace {
         reserve_price: i128,
         duration: u64,
         min_bid_increment_bps: u32,
-        // dutch_config: Option<DutchAuctionConfig> // Temporarily commented out
     ) -> u64 {
         seller.require_auth();
         assert!(start_price > 0, "Invalid start price");
         assert!(duration > 0, "Invalid duration");
-
-        let (dutch_start_price, dutch_end_price, dutch_duration_seconds, dutch_price_decay) = dutch_params;
 
         let auction_id = increment_auction_counter(&env);
         let start_time = env.ledger().timestamp();
@@ -1309,7 +1307,7 @@ impl Marketplace {
             congestion_value: new_fee_structure.congestion_factor,
             utilization_value: new_fee_structure.utilization_factor,
             volatility_value: new_fee_structure.volatility_factor,
-            adjustment_reason: String::from_str(env, "oracle_update"),
+            adjustment_reason: String::from_str(&env, "oracle_update"),
         };
 
         storage::add_fee_adjustment_history(env, &history);
@@ -1412,7 +1410,6 @@ impl Marketplace {
         // For now, just return success
         true
     }
-}
 }
 
 //#[cfg(test)]

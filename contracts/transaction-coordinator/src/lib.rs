@@ -302,10 +302,10 @@ impl TransactionCoordinator {
         let entry = TransactionJournalEntry {
             transaction_id,
             step_id,
-            action: String::from_str(env, action),
+            action: String::from_str(&env, action),
             timestamp: env.ledger().timestamp(),
             success,
-            error_message: error_message.map(|s| String::from_str(env, s)),
+            error_message: error_message.map(|s| String::from_str(&env, s)),
             state_snapshot: None,
         };
 
@@ -322,10 +322,10 @@ impl TransactionCoordinator {
     ) {
         let _event = TransactionEvent {
             transaction_id,
-            event_type: String::from_str(env, event_type),
+            event_type: String::from_str(&env, event_type),
             step_id,
             timestamp: env.ledger().timestamp(),
-            details: details.map(|s| String::from_str(env, s)),
+            details: details.map(|s| String::from_str(&env, s)),
         };
 
         env.events().publish(

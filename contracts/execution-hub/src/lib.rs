@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, String, Vec,
+    contract, contractimpl, contracttype, symbol_short, Address, Bytes, Env, String, Vec, Symbol, IntoVal,
 };
 use stellai_lib::{
     ADMIN_KEY, DEFAULT_RATE_LIMIT_OPERATIONS, DEFAULT_RATE_LIMIT_WINDOW_SECONDS, EXEC_CTR_KEY,
@@ -592,6 +592,7 @@ impl ExecutionHub {
 mod test {
     use super::*;
     use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::testutils::Ledger;
 
     // Mock AgentNFT contract for testing cross-contract calls
     #[contract]
