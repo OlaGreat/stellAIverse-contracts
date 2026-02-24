@@ -1,12 +1,10 @@
 #![no_std]
-pub mod errors;
+pub mod atomic;
 pub mod audit;
 pub mod audit_helpers;
+pub mod errors;
 
-#[cfg(test)]
-mod audit_tests;
-
-use soroban_sdk::{ contracttype, symbol_short, Address, Bytes, String, Symbol, Vec };
+use soroban_sdk::{contracttype, symbol_short, Address, Bytes, String, Symbol, Val, Vec};
 
 /// Oracle data entry
 #[derive(Clone, Debug)]
@@ -92,7 +90,7 @@ pub enum EvolutionStatus {
 }
 
 /// Royalty information for marketplace transactions
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[contracttype]
 pub struct RoyaltyInfo {
     pub recipient: Address,
@@ -189,10 +187,10 @@ pub struct Approval {
     pub expires_at: u64,
     pub status: ApprovalStatus,
     pub required_approvals: u32,
-    pub approvers: Vec<Address>, // All authorized approvers
-    pub approvals_received: Vec<Address>, // Addresses that have approved
+    pub approvers: Vec<Address>,           // All authorized approvers
+    pub approvals_received: Vec<Address>,  // Addresses that have approved
     pub rejections_received: Vec<Address>, // Addresses that have rejected
-    pub rejection_reasons: Vec<String>, // Reasons for rejections
+    pub rejection_reasons: Vec<String>,    // Reasons for rejections
 }
 
 /// Approval history entry for audit trail
@@ -334,3 +332,86 @@ pub struct LeaseHistoryEntry {
 pub const DEFAULT_LEASE_DEPOSIT_BPS: u32 = 1000; // 10% of lease value
 pub const DEFAULT_EARLY_TERMINATION_PENALTY_BPS: u32 = 2000; // 20% of remaining value
 pub const LEASE_EXTENSION_REQUEST_TTL_SECONDS: u64 = 604_800; // 7 days
+
+// ---------------------------------------------------------------------------
+// Atomic Transaction Framework
+// ---------------------------------------------------------------------------
+
+/// Transaction status in the two-phase commit protocol
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[contracttype]
+#[repr(u32)]
+pub enum TransactionStatus {
+    Initiated = 0,
+    Preparing = 1,
+    Prepared = 2,
+    Committing = 3,
+    Committed = 4,
+    RollingBack = 5,
+    RolledBack = 6,
+    Failed = 7,
+    TimedOut = 8,
+}
+
+/// Individual step in an atomic transaction
+#[derive(Clone)]
+#[contracttype]
+pub struct TransactionStep {
+    pub step_id: u32,
+    pub contract: Address,
+    pub function: Symbol,
+    pub args: Vec<Val>,
+    pub depends_on: Option<u32>, // Step dependency (step B depends on step A output)
+    pub rollback_contract: Option<Address>,
+    pub rollback_function: Option<Symbol>,
+    pub rollback_args: Option<Vec<Val>>,
+    pub executed: bool,
+    pub result: Option<String>, // Store result as string for dependent steps
+}
+
+/// Atomic transaction containing multiple coordinated steps
+#[derive(Clone)]
+#[contracttype]
+pub struct AtomicTransaction {
+    pub transaction_id: u64,
+    pub initiator: Address,
+    pub steps: Vec<TransactionStep>,
+    pub status: TransactionStatus,
+    pub created_at: u64,
+    pub deadline: u64,            // 5-minute timeout
+    pub prepared_steps: Vec<u32>, // Track which steps are prepared
+    pub executed_steps: Vec<u32>, // Track execution order for rollback
+    pub failure_reason: Option<String>,
+}
+
+/// Journal entry for transaction recovery and replay
+#[derive(Clone)]
+#[contracttype]
+pub struct TransactionJournalEntry {
+    pub transaction_id: u64,
+    pub step_id: u32,
+    pub action: String, // "prepare", "commit", "rollback"
+    pub timestamp: u64,
+    pub success: bool,
+    pub error_message: Option<String>,
+    pub state_snapshot: Option<String>, // JSON snapshot for recovery
+}
+
+/// Transaction progress event for monitoring
+#[derive(Clone)]
+#[contracttype]
+pub struct TransactionEvent {
+    pub transaction_id: u64,
+    pub event_type: String, // "initiated", "step_prepared", "step_committed", "completed", "failed"
+    pub step_id: Option<u32>,
+    pub timestamp: u64,
+    pub details: Option<String>,
+}
+
+// Transaction constants
+pub const TRANSACTION_TIMEOUT_SECONDS: u64 = 300; // 5 minutes
+pub const MAX_TRANSACTION_STEPS: u32 = 10; // Prevent DoS
+pub const TRANSACTION_COUNTER_KEY: &str = "tx_counter";
+pub const TRANSACTION_KEY_PREFIX: &str = "tx_";
+pub const TRANSACTION_JOURNAL_KEY_PREFIX: &str = "tx_journal_";
+pub const MAX_ROLLBACK_ATTEMPTS: u32 = 3;

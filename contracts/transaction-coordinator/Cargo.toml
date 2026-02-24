@@ -1,8 +1,6 @@
 [package]
-name = "execution-hub"
+name = "transaction-coordinator"
 version = "0.1.0"
-description = " contract for StellAIverse"
-authors = ["StellAIverse Team"]
 edition = "2021"
 
 [lib]

@@ -5,7 +5,7 @@ use super::*;
 use soroban_sdk::{
     contract, contractimpl, contracttype,
     testutils::{Address as _, Ledger, LedgerInfo},
-    token, Address, Env, String, Symbol, Vec, Val,
+    token, Address, Env, String, Symbol, Val, Vec,
 };
 
 // Mock token contract for testing with mint functionality
@@ -31,10 +31,12 @@ impl MockToken {
     pub fn mint(env: Env, to: Address, amount: i128) {
         let admin: Address = env.storage().instance().get(&DataKey::Admin).unwrap();
         admin.require_auth();
-        
+
         let balance_key = DataKey::Balances(to.clone());
         let current_balance: i128 = env.storage().instance().get(&balance_key).unwrap_or(0);
-        env.storage().instance().set(&balance_key, &(current_balance + amount));
+        env.storage()
+            .instance()
+            .set(&balance_key, &(current_balance + amount));
     }
 
     pub fn balance(env: Env, id: Address) -> i128 {
@@ -44,20 +46,30 @@ impl MockToken {
 
     pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
         from.require_auth();
-        
+
         let from_key = DataKey::Balances(from.clone());
         let from_balance: i128 = env.storage().instance().get(&from_key).unwrap_or(0);
         if from_balance < amount {
             panic!("Insufficient balance");
         }
-        env.storage().instance().set(&from_key, &(from_balance - amount));
-        
+        env.storage()
+            .instance()
+            .set(&from_key, &(from_balance - amount));
+
         let to_key = DataKey::Balances(to.clone());
         let to_balance: i128 = env.storage().instance().get(&to_key).unwrap_or(0);
-        env.storage().instance().set(&to_key, &(to_balance + amount));
+        env.storage()
+            .instance()
+            .set(&to_key, &(to_balance + amount));
     }
 
-    pub fn approve(env: Env, from: Address, spender: Address, amount: i128, expiration_ledger: u32) {
+    pub fn approve(
+        env: Env,
+        from: Address,
+        spender: Address,
+        amount: i128,
+        expiration_ledger: u32,
+    ) {
         from.require_auth();
         // Simplified approval for testing
     }
@@ -95,14 +107,21 @@ fn create_governance_contract(e: &Env) -> Address {
     e.register_contract(None, Governance)
 }
 
-fn setup_governance(e: &Env) -> (GovernanceClient<'static>, Address, Address, MockTokenClient<'static>) {
+fn setup_governance(
+    e: &Env,
+) -> (
+    GovernanceClient<'static>,
+    Address,
+    Address,
+    MockTokenClient<'static>,
+) {
     let admin = Address::generate(e);
     let governance_token = create_token_contract(e, &admin);
     let governance = create_governance_contract(e);
-    
+
     let gov_client = GovernanceClient::new(e, &governance);
     let mock_token_client = MockTokenClient::new(e, &governance_token);
-    
+
     e.mock_all_auths();
     gov_client.init_contract(
         &admin,
@@ -113,7 +132,7 @@ fn setup_governance(e: &Env) -> (GovernanceClient<'static>, Address, Address, Mo
         &None::<u64>,
         &None::<u128>,
     );
-    
+
     (gov_client, admin, governance_token, mock_token_client)
 }
 
@@ -136,10 +155,10 @@ fn test_voting_power_base_tokens_only() {
     let e = Env::default();
     e.mock_all_auths();
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
-    
+
     let user = Address::generate(&e);
     token_client.mint(&user, &10000);
-    
+
     let power = gov_client.get_vote_power(&user);
     assert_eq!(power, 10000);
 }
@@ -158,13 +177,13 @@ fn test_voting_power_with_escrow() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let user = Address::generate(&e);
-    
+
     token_client.mint(&user, &20000);
     gov_client.lock_for_escrow(&user, &10000, &4); // 4 weeks = 2x
-    
+
     let power = gov_client.get_vote_power(&user);
     // Base: 10000 (remaining), Escrow: 10000 * 2 = 20000
     assert_eq!(power, 30000);
@@ -175,17 +194,17 @@ fn test_voting_power_with_delegation() {
     let e = Env::default();
     e.mock_all_auths();
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
-    
+
     let delegator = Address::generate(&e);
     let delegatee = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&delegator, &10000);
     gov_client.delegate_voting_power(&delegator, &delegatee, &5000);
-    
+
     let delegator_power = gov_client.get_vote_power(&delegator);
     let delegatee_power = gov_client.get_vote_power(&delegatee);
-    
+
     assert_eq!(delegator_power, 5000); // Remaining after delegation
     assert_eq!(delegatee_power, 5000); // Received from delegator
 }
@@ -204,19 +223,19 @@ fn test_voting_power_combined() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
-    
+
     let user1 = Address::generate(&e);
     let user2 = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&user1, &20000);
     token_client.mint(&user2, &10000);
-    
+
     gov_client.lock_for_escrow(&user1, &5000, &26); // 26 weeks = 3x
     gov_client.delegate_voting_power(&user2, &user1, &5000);
-    
+
     let power = gov_client.get_vote_power(&user1);
     // Base: 15000 (20000 - 5000 locked)
     // Escrow: 5000 * multiplier(26 weeks) / 10000
@@ -241,13 +260,13 @@ fn test_voting_power_escrow_expired() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let user = Address::generate(&e);
-    
+
     token_client.mint(&user, &20000);
     gov_client.lock_for_escrow(&user, &10000, &4);
-    
+
     e.ledger().set(LedgerInfo {
         timestamp: 1000 + (4 * 7 * 24 * 60 * 60) + 1,
         protocol_version: 20,
@@ -258,7 +277,7 @@ fn test_voting_power_escrow_expired() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let power = gov_client.get_vote_power(&user);
     assert_eq!(power, 10000); // Only base, escrow expired
 }
@@ -272,14 +291,14 @@ fn test_simple_delegation() {
     let e = Env::default();
     e.mock_all_auths();
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
-    
+
     let delegator = Address::generate(&e);
     let delegatee = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&delegator, &10000);
     gov_client.delegate_voting_power(&delegator, &delegatee, &5000);
-    
+
     let delegation = gov_client.get_delegation(&delegator);
     assert!(delegation.is_some());
     let del = delegation.unwrap();
@@ -292,21 +311,21 @@ fn test_re_delegation() {
     let e = Env::default();
     e.mock_all_auths();
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
-    
+
     let alice = Address::generate(&e);
     let bob = Address::generate(&e);
     let charlie = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&alice, &10000);
     token_client.mint(&bob, &5000);
-    
+
     gov_client.delegate_voting_power(&alice, &bob, &5000);
     gov_client.delegate_voting_power(&bob, &charlie, &3000);
-    
+
     let bob_power = gov_client.get_vote_power(&bob);
     let charlie_power = gov_client.get_vote_power(&charlie);
-    
+
     assert_eq!(bob_power, 7000); // 5000 base + 5000 delegated - 3000 re-delegated = 7000
     assert_eq!(charlie_power, 3000); // Received from bob
 }
@@ -316,16 +335,16 @@ fn test_change_delegation() {
     let e = Env::default();
     e.mock_all_auths();
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
-    
+
     let delegator = Address::generate(&e);
     let delegatee1 = Address::generate(&e);
     let delegatee2 = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&delegator, &10000);
     gov_client.delegate_voting_power(&delegator, &delegatee1, &5000);
     gov_client.delegate_voting_power(&delegator, &delegatee2, &5000);
-    
+
     let delegation = gov_client.get_delegation(&delegator);
     assert_eq!(delegation.unwrap().delegatee, delegatee2);
 }
@@ -335,15 +354,15 @@ fn test_undelegate() {
     let e = Env::default();
     e.mock_all_auths();
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
-    
+
     let delegator = Address::generate(&e);
     let delegatee = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&delegator, &10000);
     gov_client.delegate_voting_power(&delegator, &delegatee, &5000);
     gov_client.undelegate_voting_power(&delegator);
-    
+
     let delegation = gov_client.get_delegation(&delegator);
     assert!(delegation.is_none());
 }
@@ -354,7 +373,7 @@ fn test_delegate_to_self() {
     let e = Env::default();
     e.mock_all_auths();
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
-    
+
     let user = Address::generate(&e);
     token_client.mint(&user, &10000);
     gov_client.delegate_voting_power(&user, &user, &5000);
@@ -378,23 +397,23 @@ fn test_escrow_multipliers() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let user = Address::generate(&e);
     e.mock_all_auths();
     token_client.mint(&user, &50000);
-    
+
     gov_client.lock_for_escrow(&user, &10000, &4); // 4 weeks = 2x
     let escrow1 = gov_client.get_vote_escrow(&user).unwrap();
     assert_eq!(escrow1.multiplier, 20000);
-    
+
     let user2 = Address::generate(&e);
     e.mock_all_auths();
     token_client.mint(&user2, &50000);
     gov_client.lock_for_escrow(&user2, &10000, &52); // 52 weeks = 4x
     let escrow2 = gov_client.get_vote_escrow(&user2).unwrap();
     assert_eq!(escrow2.multiplier, 40000);
-    
+
     let user3 = Address::generate(&e);
     e.mock_all_auths();
     token_client.mint(&user3, &50000);
@@ -417,15 +436,15 @@ fn test_escrow_add_to_existing() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let user = Address::generate(&e);
     e.mock_all_auths();
     token_client.mint(&user, &50000);
-    
+
     gov_client.lock_for_escrow(&user, &10000, &4);
     gov_client.lock_for_escrow(&user, &5000, &8);
-    
+
     let escrow = gov_client.get_vote_escrow(&user).unwrap();
     assert_eq!(escrow.amount, 15000);
 }
@@ -444,14 +463,14 @@ fn test_unlock_escrow() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, _, governance_token, token_client) = setup_governance(&e);
     let user = Address::generate(&e);
     token_client.mint(&user, &20000);
-    
+
     let initial_balance = token_client.balance(&user);
     gov_client.lock_for_escrow(&user, &10000, &4);
-    
+
     let lock_duration = 4 * 7 * 24 * 60 * 60;
     e.ledger().set(LedgerInfo {
         timestamp: 1000 + lock_duration + 1,
@@ -463,7 +482,7 @@ fn test_unlock_escrow() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     gov_client.unlock_escrow(&user);
     let final_balance = token_client.balance(&user);
     assert_eq!(final_balance, initial_balance);
@@ -484,11 +503,11 @@ fn test_unlock_before_expiry() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let user = Address::generate(&e);
     token_client.mint(&user, &20000);
-    
+
     gov_client.lock_for_escrow(&user, &10000, &4);
     gov_client.unlock_escrow(&user);
 }
@@ -511,20 +530,20 @@ fn test_full_proposal_lifecycle() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
-    
+
     let proposer = Address::generate(&e);
     let voter1 = Address::generate(&e);
     let voter2 = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&proposer, &10000);
     token_client.mint(&voter1, &50000);
     token_client.mint(&voter2, &30000);
-    
+
     gov_client.update_circulating_voting_power(&admin, &100000u128);
-    
+
     let target_contract = e.register_contract(None, MockTargetContract);
     let params = ProposalParameters {
         name: String::from_str(&e, "test_param"),
@@ -533,7 +552,7 @@ fn test_full_proposal_lifecycle() {
     let title = String::from_str(&e, "Test Proposal");
     let description = String::from_str(&e, "Full lifecycle test");
     let voting_period = 7 * 24 * 60 * 60; // 7 days (minimum valid period)
-    
+
     let proposal_id = gov_client.create_proposal(
         &proposer,
         &title,
@@ -545,15 +564,15 @@ fn test_full_proposal_lifecycle() {
         &Some(Symbol::new(&e, "update_parameter")),
         &None::<Vec<Val>>,
     );
-    
+
     assert_eq!(proposal_id, 1);
-    
+
     let proposal = gov_client.get_proposal(&proposal_id).unwrap();
     assert_eq!(proposal.status, ProposalStatus::Active);
-    
+
     gov_client.cast_vote(&voter1, &proposal_id, &VoteType::For);
     gov_client.cast_vote(&voter2, &proposal_id, &VoteType::For);
-    
+
     e.ledger().set(LedgerInfo {
         timestamp: 1000 + voting_period + 1,
         protocol_version: 20,
@@ -564,15 +583,15 @@ fn test_full_proposal_lifecycle() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     gov_client.update_proposal_status(&proposal_id);
-    
+
     let proposal = gov_client.get_proposal(&proposal_id).unwrap();
     assert_eq!(proposal.status, ProposalStatus::Passed);
-    
+
     let executor = Address::generate(&e);
     gov_client.execute_proposal(&executor, &proposal_id);
-    
+
     let proposal = gov_client.get_proposal(&proposal_id).unwrap();
     assert_eq!(proposal.status, ProposalStatus::Executed);
 }
@@ -596,15 +615,15 @@ fn test_no_double_voting() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let proposer = Address::generate(&e);
     let voter = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&proposer, &10000);
     token_client.mint(&voter, &5000);
-    
+
     let proposal_id = gov_client.create_proposal(
         &proposer,
         &String::from_str(&e, "Test"),
@@ -616,7 +635,7 @@ fn test_no_double_voting() {
         &None::<Symbol>,
         &None::<Vec<Val>>,
     );
-    
+
     gov_client.cast_vote(&voter, &proposal_id, &VoteType::For);
     gov_client.cast_vote(&voter, &proposal_id, &VoteType::Against);
 }
@@ -636,15 +655,15 @@ fn test_vote_before_start() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let proposer = Address::generate(&e);
     let voter = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&proposer, &10000);
     token_client.mint(&voter, &5000);
-    
+
     let proposal_id = gov_client.create_proposal(
         &proposer,
         &String::from_str(&e, "Test"),
@@ -656,7 +675,7 @@ fn test_vote_before_start() {
         &None::<Symbol>,
         &None::<Vec<Val>>,
     );
-    
+
     e.ledger().set(LedgerInfo {
         timestamp: 999,
         protocol_version: 20,
@@ -667,7 +686,7 @@ fn test_vote_before_start() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     gov_client.cast_vote(&voter, &proposal_id, &VoteType::For);
 }
 
@@ -686,15 +705,15 @@ fn test_vote_after_end() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let proposer = Address::generate(&e);
     let voter = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&proposer, &10000);
     token_client.mint(&voter, &5000);
-    
+
     let voting_period = 7 * 24 * 60 * 60; // 7 days (minimum valid period)
     let proposal_id = gov_client.create_proposal(
         &proposer,
@@ -707,7 +726,7 @@ fn test_vote_after_end() {
         &None::<Symbol>,
         &None::<Vec<Val>>,
     );
-    
+
     e.ledger().set(LedgerInfo {
         timestamp: 1000 + voting_period + 1,
         protocol_version: 20,
@@ -718,7 +737,7 @@ fn test_vote_after_end() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     gov_client.cast_vote(&voter, &proposal_id, &VoteType::For);
 }
 
@@ -737,14 +756,14 @@ fn test_vote_without_power() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let proposer = Address::generate(&e);
     let voter = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&proposer, &10000);
-    
+
     let proposal_id = gov_client.create_proposal(
         &proposer,
         &String::from_str(&e, "Test"),
@@ -756,7 +775,7 @@ fn test_vote_without_power() {
         &None::<Symbol>,
         &None::<Vec<Val>>,
     );
-    
+
     gov_client.cast_vote(&voter, &proposal_id, &VoteType::For);
 }
 
@@ -778,23 +797,23 @@ fn test_execute_parameter_change_proposal() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let proposer = Address::generate(&e);
     let voter = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&proposer, &10000);
     token_client.mint(&voter, &50000);
-    
+
     gov_client.update_circulating_voting_power(&admin, &100000u128);
-    
+
     let target_contract = e.register_contract(None, MockTargetContract);
     let params = ProposalParameters {
         name: String::from_str(&e, "fee_rate"),
         value: String::from_str(&e, "500"),
     };
-    
+
     let voting_period = 7 * 24 * 60 * 60; // 7 days (minimum valid period)
     let proposal_id = gov_client.create_proposal(
         &proposer,
@@ -807,9 +826,9 @@ fn test_execute_parameter_change_proposal() {
         &Some(Symbol::new(&e, "update_parameter")),
         &None::<Vec<Val>>,
     );
-    
+
     gov_client.cast_vote(&voter, &proposal_id, &VoteType::For);
-    
+
     e.ledger().set(LedgerInfo {
         timestamp: 1000 + voting_period + 1,
         protocol_version: 20,
@@ -820,12 +839,12 @@ fn test_execute_parameter_change_proposal() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     gov_client.update_proposal_status(&proposal_id);
-    
+
     let executor = Address::generate(&e);
     gov_client.execute_proposal(&executor, &proposal_id);
-    
+
     let proposal = gov_client.get_proposal(&proposal_id).unwrap();
     assert_eq!(proposal.status, ProposalStatus::Executed);
 }
@@ -845,13 +864,13 @@ fn test_execute_before_passing() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let proposer = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&proposer, &10000);
-    
+
     let proposal_id = gov_client.create_proposal(
         &proposer,
         &String::from_str(&e, "Test"),
@@ -863,7 +882,7 @@ fn test_execute_before_passing() {
         &None::<Symbol>,
         &None::<Vec<Val>>,
     );
-    
+
     let executor = Address::generate(&e);
     gov_client.execute_proposal(&executor, &proposal_id);
 }
@@ -886,12 +905,12 @@ fn test_many_proposals() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let proposer = Address::generate(&e);
     e.mock_all_auths();
     token_client.mint(&proposer, &1000000);
-    
+
     for i in 1..=10 {
         let title = String::from_str(&e, &alloc::format!("Proposal {}", i));
         let description = String::from_str(&e, &alloc::format!("Description {}", i));
@@ -908,7 +927,7 @@ fn test_many_proposals() {
         );
         assert_eq!(proposal_id, i);
     }
-    
+
     let active = gov_client.get_active_proposals();
     assert_eq!(active.len(), 10);
 }
@@ -927,12 +946,12 @@ fn test_many_voters() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let proposer = Address::generate(&e);
     e.mock_all_auths();
     token_client.mint(&proposer, &10000);
-    
+
     let proposal_id = gov_client.create_proposal(
         &proposer,
         &String::from_str(&e, "Test"),
@@ -944,7 +963,7 @@ fn test_many_voters() {
         &None::<Symbol>,
         &None::<Vec<Val>>,
     );
-    
+
     let mut total_votes = 0u128;
     for i in 0..20 {
         let voter = Address::generate(&e);
@@ -953,7 +972,7 @@ fn test_many_voters() {
         gov_client.cast_vote(&voter, &proposal_id, &VoteType::For);
         total_votes += (1000 + i * 100) as u128;
     }
-    
+
     let proposal = gov_client.get_proposal(&proposal_id).unwrap();
     assert_eq!(proposal.votes_for, total_votes);
 }
@@ -976,17 +995,17 @@ fn test_quorum_edge_case() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let proposer = Address::generate(&e);
     let voter = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&proposer, &10000);
     token_client.mint(&voter, &30000);
-    
+
     gov_client.update_circulating_voting_power(&admin, &100000u128);
-    
+
     let voting_period = 7 * 24 * 60 * 60; // 7 days (minimum valid period)
     let proposal_id = gov_client.create_proposal(
         &proposer,
@@ -999,9 +1018,9 @@ fn test_quorum_edge_case() {
         &None::<Symbol>,
         &None::<Vec<Val>>,
     );
-    
+
     gov_client.cast_vote(&voter, &proposal_id, &VoteType::For);
-    
+
     e.ledger().set(LedgerInfo {
         timestamp: 1000 + voting_period + 1,
         protocol_version: 20,
@@ -1012,9 +1031,9 @@ fn test_quorum_edge_case() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     gov_client.update_proposal_status(&proposal_id);
-    
+
     let proposal = gov_client.get_proposal(&proposal_id).unwrap();
     assert_eq!(proposal.status, ProposalStatus::Passed);
 }
@@ -1033,19 +1052,19 @@ fn test_approval_threshold_edge_case() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let proposer = Address::generate(&e);
     let voter_for = Address::generate(&e);
     let voter_against = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&proposer, &10000);
     token_client.mint(&voter_for, &66000);
     token_client.mint(&voter_against, &34000);
-    
+
     gov_client.update_circulating_voting_power(&admin, &100000u128);
-    
+
     let voting_period = 7 * 24 * 60 * 60; // 7 days (minimum valid period)
     let proposal_id = gov_client.create_proposal(
         &proposer,
@@ -1058,10 +1077,10 @@ fn test_approval_threshold_edge_case() {
         &None::<Symbol>,
         &None::<Vec<Val>>,
     );
-    
+
     gov_client.cast_vote(&voter_for, &proposal_id, &VoteType::For);
     gov_client.cast_vote(&voter_against, &proposal_id, &VoteType::Against);
-    
+
     e.ledger().set(LedgerInfo {
         timestamp: 1000 + voting_period + 1,
         protocol_version: 20,
@@ -1072,9 +1091,9 @@ fn test_approval_threshold_edge_case() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     gov_client.update_proposal_status(&proposal_id);
-    
+
     let proposal = gov_client.get_proposal(&proposal_id).unwrap();
     assert_eq!(proposal.status, ProposalStatus::Passed);
 }
@@ -1084,7 +1103,7 @@ fn test_zero_circulating_power() {
     let e = Env::default();
     e.mock_all_auths();
     let (gov_client, admin, _, _) = setup_governance(&e);
-    
+
     gov_client.update_circulating_voting_power(&admin, &0u128);
     // Should handle zero gracefully
 }
@@ -1103,15 +1122,15 @@ fn test_vote_weight_calculation_edge_cases() {
         min_persistent_entry_ttl: 2592000,
         min_temp_entry_ttl: 16,
     });
-    
+
     let (gov_client, admin, governance_token, token_client) = setup_governance(&e);
     let user = Address::generate(&e);
-    
+
     e.mock_all_auths();
     token_client.mint(&user, &1);
     let power = gov_client.get_vote_power(&user);
     assert_eq!(power, 1);
-    
+
     gov_client.lock_for_escrow(&user, &1, &52);
     let power = gov_client.get_vote_power(&user);
     // Base: 0 (1 token locked), Escrow: 1 * 40000 / 10000 = 4

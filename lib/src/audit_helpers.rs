@@ -1,10 +1,9 @@
+use crate::audit::{create_audit_log, OperationType};
 /// Helper functions and utilities for audit logging instrumentation
-/// 
+///
 /// This module provides convenient functions for creating audit log entries
 /// across different contracts with minimal code duplication.
-
 use soroban_sdk::{Address, Env, String};
-use crate::audit::{create_audit_log, OperationType};
 
 // ============================================================================
 // AUDIT LOG INSTRUMENTATION HELPERS
@@ -82,7 +81,7 @@ pub fn log_error_operation(
 ) -> u64 {
     let tx_hash = String::from_str(env, "error-log");
     let empty_state = String::from_str(env, "{}");
-    
+
     create_audit_log(
         env,
         operator,
@@ -99,11 +98,7 @@ pub fn log_error_operation(
 // ============================================================================
 
 /// Serialize common state patterns to JSON-like format
-pub fn serialize_agent_state(
-    env: &Env,
-    agent_id: u64,
-    evolution_level: u32,
-) -> String {
+pub fn serialize_agent_state(env: &Env, agent_id: u64, evolution_level: u32) -> String {
     // Simple JSON-like format without requiring format! macro
     // Structure: {"agent_id":X,"evolution_level":Y}
     let _ = agent_id; // suppress unused warning
@@ -123,16 +118,14 @@ pub fn serialize_listing_state(
     let _ = agent_id;
     let _ = price;
     let _ = active;
-    String::from_str(env, "{\"listing_id\":0,\"agent_id\":0,\"price\":0,\"active\":false}")
+    String::from_str(
+        env,
+        "{\"listing_id\":0,\"agent_id\":0,\"price\":0,\"active\":false}",
+    )
 }
 
 /// Serialize transaction state to JSON-like format
-pub fn serialize_transaction_state(
-    env: &Env,
-    tx_id: u64,
-    amount: i128,
-    status: &str,
-) -> String {
+pub fn serialize_transaction_state(env: &Env, tx_id: u64, amount: i128, status: &str) -> String {
     let _ = tx_id;
     let _ = amount;
     let _ = status;
@@ -143,10 +136,7 @@ pub fn serialize_transaction_state(
 pub fn serialize_state_change(env: &Env, before: &str, after: &str) -> (String, String) {
     let _ = before;
     let _ = after;
-    (
-        String::from_str(env, "{}"),
-        String::from_str(env, "{}"),
-    )
+    (String::from_str(env, "{}"), String::from_str(env, "{}"))
 }
 
 // ============================================================================
